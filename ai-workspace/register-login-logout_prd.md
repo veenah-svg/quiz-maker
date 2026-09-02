@@ -869,6 +869,13 @@ Measured during Phase 5. No analytics stack.
 **Cause**: HTTPS GitHub auth prompt was cancelled.
 **Solution**: User must complete GitHub login (or switch to SSH). Agents should not loop on push.
 
+### Cursor debug logs and agent instrumentation
+
+**Problem**: `debug-*.log` or `#region agent log` fetch calls appear in the working tree.
+**Cause**: A debug session left ingest hooks in source or log files at the repo root / `.cursor/`.
+**Solution**: Delete the logs. Restore source files to remove `#region agent log` blocks. Do not commit either. `debug-*.log` and `.cursor/debug-*.log` are gitignored.
+**Code Reference**: `.gitignore`
+
 ---
 
 ## Follow-on work (next sprint)
@@ -901,6 +908,7 @@ This PRD is **complete**. Use it as context, not as a build plan.
 5. Never apply D1 migrations remotely and never deploy unless asked.
 6. Cite code as `filepath:line-number`.
 7. If you change hashing, schema, or HTTP contracts, update **this** PRD in the same change.
+8. Never commit Cursor debug instrumentation (`#region agent log`, ingest URLs, `debug-*.log`). Delete those files; they are local only.
 
 ---
 
@@ -908,6 +916,7 @@ This PRD is **complete**. Use it as context, not as a build plan.
 
 **Last Updated**: 2026-09-02
 **Current Phase**: Phase 5 - Verify
-**Status**: COMPLETED — register / login / logout is shipped
-**Verification**: `npm test` 51/51; `npm run lint` exit 0; `npm run build` succeeded (routes `/`, `/login`, `/register`, `/mcqs`, `/api/register`, `/api/login`, `/api/logout`). Browser path verified by the user locally and on the deployed Cloudflare app.
-**Next Steps**: New PRD for the MCQ question bank on `/mcqs`. Stay on `feature/register-login-logout` until this auth branch is merged.
+**Status**: COMPLETED — register / login / logout is shipped, user-verified, committed, and pushed
+**Git**: Branch `feature/register-login-logout` is on GitHub: https://github.com/veenah-svg/quiz-maker/tree/feature/register-login-logout. Phase 5 docs commit: `1b82136`. This PRD was updated after the user re-verified the live app and the branch was pushed.
+**Verification**: `npm test` 51/51; `npm run lint` exit 0; `npm run build` succeeded (routes `/`, `/login`, `/register`, `/mcqs`, `/api/register`, `/api/login`, `/api/logout`). The user confirmed the full path locally and on the deployed Cloudflare app (register → `/mcqs` → logout → login).
+**Next Steps**: Open a PR to merge this branch, then write a new PRD for the MCQ question bank on `/mcqs`. Do not re-implement auth.
