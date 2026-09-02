@@ -301,7 +301,7 @@ Phase 5 additionally requires `npm run lint`, `npm run build`, and a browser pas
 - Migration file under `migrations/`
 - Local schema applied
 
-### Phase 2: User service and password helper - PLANNED
+### Phase 2: User service and password helper - COMPLETED
 
 **Objective**: Application code can create, update, delete, and look up users without route handlers knowing SQL. Password hashing is a pure helper with tests.
 
@@ -471,8 +471,8 @@ Run `npm test` — UI tests fail until the components exist.
 - `wrangler.jsonc` — D1 `DB` binding for database `quizmaker` (local placeholder `database_id` until a remote D1 is created)
 - `migrations/0001_create_users.sql` — `users` table
 - `migrations/users-schema.test.ts` — asserts migration SQL shape
-- `src/lib/password.ts` / `src/lib/password.test.ts` — SHA-256 hex helper
-- `src/lib/services/user-service.ts` / `src/lib/services/user-service.test.ts` — D1-backed create / get / update / delete
+- `src/lib/password.ts` / `src/lib/password.test.ts` — SHA-256 hex helper (`hashPassword`)
+- `src/lib/services/user-service.ts` / `src/lib/services/user-service.test.ts` — D1-backed `createUser`, `getUserByUsername`, `getUserByEmail`, `updateUser`, `deleteUser`; `UserConflictError` for unique username/email
 - `src/app/api/register/route.ts` / `route.test.ts` — `POST` register
 - `src/app/api/login/route.ts` / `route.test.ts` — `POST` login
 - `src/app/api/logout/route.ts` / `route.test.ts` — `POST` logout
@@ -510,6 +510,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 const { env } = await getCloudflareContext();
 const user = await createUser(env.DB, input);
 ```
+
+Inserts and updates use `RETURNING` and `all().results[0]`. Unique constraint failures become `UserConflictError` with `field: "username" | "email"`. Lookups return `UserRecord` (includes `passwordHash`); `createUser` / `updateUser` return `PublicUser` without it.
 
 ```typescript
 // Client submit handler (register / login): hash, then POST JSON
@@ -573,7 +575,7 @@ vi.mock("server-only", () => ({}));
 - [ ] Logout calls `POST /api/logout` and the UI goes to `/login`
 - [ ] No cookies, session store, or tokens are introduced
 - [ ] No social login
-- [ ] User service supports create, update, and delete against D1
+- [x] User service supports create, update, and delete against D1
 - [ ] Each phase’s Vitest tests were written first, failed for a real reason, then passed after that phase’s implementation
 - [ ] `npm test` (Vitest) is green
 - [ ] `npm run lint` and `npm run build` succeed after implementation
@@ -725,6 +727,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated**: 2026-09-02
-**Current Phase**: Phase 1 - Vitest harness, D1, and users migration
-**Status**: COMPLETED — waiting for review before Phase 2
-**Next Steps**: After review, start Phase 2 with failing password-helper and user-service tests.
+**Current Phase**: Phase 2 - User service and password helper
+**Status**: COMPLETED — waiting for review before Phase 3
+**Next Steps**: After review, start Phase 3 with failing register/login/logout route tests.
