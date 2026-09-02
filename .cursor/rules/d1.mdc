@@ -8,9 +8,9 @@ alwaysApply: false
 
 D1 is Cloudflare's SQLite database. **This app already has D1 configured.** Binding
 `DB`, database name `quizmaker`, migrations in `migrations/`. The `users` table is
-created by `migrations/0001_create_users.sql`. User queries live in
-`src/lib/services/user-service.ts`. Do not recreate the database or the users
-migration.
+created by `migrations/0001_create_users.sql`. Sessions live in
+`migrations/0002_create_sessions.sql` (`src/lib/services/session-service.ts`).
+Do not recreate the database or those migrations.
 
 `wrangler.jsonc` may still show placeholder `database_id`
 `00000000-0000-0000-0000-000000000001`. If production already works, look up the

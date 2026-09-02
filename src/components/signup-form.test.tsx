@@ -103,6 +103,7 @@ describe("SignupForm", () => {
 			"/api/register",
 			expect.objectContaining({
 				method: "POST",
+				credentials: "include",
 				headers: { "Content-Type": "application/json" },
 			}),
 		);

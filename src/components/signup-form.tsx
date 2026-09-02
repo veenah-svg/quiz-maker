@@ -70,6 +70,7 @@ export function SignupForm({ ...props }: ComponentProps<typeof Card>) {
 			const passwordHash = await hashPassword(password);
 			const response = await fetch("/api/register", {
 				method: "POST",
+				credentials: "include",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					firstName: firstName.trim(),

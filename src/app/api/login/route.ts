@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { firstZodMessage, loginBodySchema } from "@/lib/auth-schemas";
 import { jsonError, readJsonBody } from "@/lib/http";
 import { passwordHashesMatch } from "@/lib/password";
+import { applySessionCookie } from "@/lib/session-cookie";
+import { createSession } from "@/lib/services/session-service";
 import { getUserByUsername } from "@/lib/services/user-service";
 
 const INVALID_CREDENTIALS = "Invalid username or password";
@@ -26,13 +28,16 @@ export async function POST(request: Request) {
 			return jsonError(401, INVALID_CREDENTIALS);
 		}
 
-		return NextResponse.json({
+		const session = await createSession(env.DB, user.id);
+		const response = NextResponse.json({
 			id: user.id,
 			firstName: user.firstName,
 			lastName: user.lastName,
 			username: user.username,
 			email: user.email,
 		});
+		applySessionCookie(response, session.id);
+		return response;
 	} catch {
 		return jsonError(500, "Something went wrong");
 	}

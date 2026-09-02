@@ -7,8 +7,10 @@ agent conversation, so it describes only what is stable and true of the project.
 
 Quiz Maker is a shared test bank of multiple-choice questions for several teachers.
 Register, login, and logout are shipped: accounts live in D1, passwords are SHA-256
-hashed in the browser, and successful auth lands on a placeholder `/mcqs` page.
-There are no sessions, cookies, or tokens yet, so `/mcqs` is not a protected route.
+hashed in the browser, and successful auth sets an HttpOnly `qm_session` cookie backed
+by a D1 `sessions` row. `/mcqs` requires a valid session for that browser. Logout
+deletes **only** that cookie’s session, so other browsers stay signed in. A new
+browser has no cookie and must log in again.
 
 The as-built auth contract is `ai-workspace/register-login-logout_prd.md`. Do not
 re-implement that feature. The next product work is MCQ CRUD on `/mcqs` (new PRD).
@@ -25,9 +27,10 @@ re-implement that feature. The next product work is MCQ CRUD on `/mcqs` (new PRD
 - **Vitest** (jsdom) for unit tests
 - **Zod** v4 for route-handler body validation
 
-No authentication library, session store, testing pool for Workers, or AI SDK is
-installed. Do not write code that imports one without adding it first and telling
-the user.
+No authentication library, testing pool for Workers, or AI SDK is
+installed. Sessions are a D1 table plus an HttpOnly cookie — do not add JWT, OAuth,
+or a session package without asking. Do not write code that imports a new library
+without adding it first and telling the user.
 
 ## Layout
 
@@ -36,8 +39,8 @@ src/app/            Routes, layouts, and global styles (App Router)
 src/app/api/        HTTP route handlers (register, login, logout)
 src/components/     Feature UI (login-form, signup-form, logout-button)
 src/components/ui/  shadcn/ui components (generated; avoid hand-editing)
-src/lib/            Shared utilities (`password.ts`, `auth-schemas.ts`, `http.ts`)
-src/lib/services/   Domain logic (`user-service.ts`) — server-only, no `'use client'`
+src/lib/            Shared utilities (`password.ts`, `auth-schemas.ts`, `http.ts`, `session-cookie.ts`)
+src/lib/services/   Domain logic (`user-service.ts`, `session-service.ts`) — server-only, no `'use client'`
 migrations/         D1 SQL migrations
 ai-workspace/       Technical PRDs and planning documents
 .cursor/rules/      File-scoped conventions (including auth.mdc)

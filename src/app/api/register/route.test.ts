@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UserConflictError, createUser } from "@/lib/services/user-service";
+import { createSession } from "@/lib/services/session-service";
+import { SESSION_COOKIE_NAME } from "@/lib/session-cookie";
 import { POST } from "./route";
 
 vi.mock("@opennextjs/cloudflare", () => ({
 	getCloudflareContext: vi.fn(async () => ({
 		env: { DB: {} },
 	})),
+}));
+
+vi.mock("@/lib/services/session-service", () => ({
+	createSession: vi.fn(),
+	getSession: vi.fn(),
+	deleteSession: vi.fn(),
 }));
 
 vi.mock("@/lib/services/user-service", async (importOriginal) => {
@@ -52,6 +60,11 @@ describe("POST /api/register", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(createUser).mockResolvedValue(publicUser);
+		vi.mocked(createSession).mockResolvedValue({
+			id: "sess-register-1",
+			userId: "user-1",
+			expiresAt: "2099-01-01T00:00:00.000Z",
+		});
 	});
 
 	it("creates a user and returns 201 without passwordHash", async () => {
@@ -75,6 +88,11 @@ describe("POST /api/register", () => {
 			expect.anything(),
 			expect.objectContaining({ password: expect.anything() }),
 		);
+		expect(createSession).toHaveBeenCalledWith({}, "user-1");
+		expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe(
+			"sess-register-1",
+		);
+		expect(response.cookies.get(SESSION_COOKIE_NAME)?.httpOnly).toBe(true);
 	});
 
 	it("accepts username equal to email", async () => {

@@ -46,6 +46,7 @@ export function LoginForm({
 			const passwordHash = await hashPassword(password);
 			const response = await fetch("/api/login", {
 				method: "POST",
+				credentials: "include",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ username: username.trim(), passwordHash }),
 			});

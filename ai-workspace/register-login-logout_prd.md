@@ -5,7 +5,7 @@ Date last modified: 2026-09-02
 
 ## Overview/Problem
 
-Quiz Maker is a greenfield application whose long-term purpose is a shared test bank of multiple-choice questions that several teachers can build together. This feature is **shipped**: teachers can register, log in, log out, and land on a placeholder MCQ page. Accounts live in Cloudflare D1. Passwords are SHA-256 hashed in the browser before POST. There are still no sessions, cookies, or tokens, so `/mcqs` is not a protected route. The question bank itself is the next feature, not this one.
+Quiz Maker is a greenfield application whose long-term purpose is a shared test bank of multiple-choice questions that several teachers can build together. This feature is **shipped**: teachers can register, log in, log out, and land on a placeholder MCQ page. Accounts live in Cloudflare D1. Passwords are SHA-256 hashed in the browser before POST. Each browser gets its own D1 `sessions` row and an HttpOnly `qm_session` cookie. `/mcqs` requires a valid session for **that** browser. Logout deletes only that session, so another browser stays signed in. A new or private window has no cookie and must enter username and password again.
 
 Do **not** re-implement register/login/logout. Treat this PRD as the as-built contract. The next sprint should write a new PRD for MCQ CRUD and extend `/mcqs`.
 
@@ -16,16 +16,21 @@ Browser (client components)          Server (route handlers)           D1
 ---------------------------          -----------------------           --
 SignupForm / LoginForm
   hashPassword(plaintext)  ──POST──► /api/register | /api/login
-  (SHA-256 hex, trimmed)             Zod body in auth-schemas.ts
-                                     getCloudflareContext({ async: true })
+  credentials: include               Zod body in auth-schemas.ts
                                      createUser / getUserByUsername ──► users
-LogoutButton ──────────────POST────► /api/logout (no D1)
+                                     createSession ──────────────────► sessions
+                                     Set-Cookie: qm_session (HttpOnly, this browser only)
+LogoutButton ──────────────POST────► /api/logout
+                                     deleteSession(cookie id only)
+                                     expire qm_session cookie
+/mcqs layout                         getSession(cookie) or redirect /login
 ```
 
 - Login is by **username**, not email.
 - The server stores and compares the client hash; it does **not** hash again.
 - HTTP JSON never includes `passwordHash` on success.
 - `updateUser` / `deleteUser` exist on the service but have no HTTP/UI yet.
+- Two browsers = two session rows. Logout in one does not delete the other.
 
 ---
 
@@ -47,6 +52,8 @@ We believe that a simple register, login, and logout flow backed by a hashed-pas
 - Server stores the received hash in D1 and compares hashes on login (no second transformation unless documented below)
 - A user service in `src/lib/services/` with create, update, delete, and the lookups register/login need
 - HTTP POST endpoints for register, login, and logout; register and login call the user service
+- Per-browser D1 sessions (`sessions` table + HttpOnly `qm_session` cookie). Logout deletes only that session id
+- `/mcqs` requires a valid session for the requesting browser
 - Register and login pages, plus a logout action
 - After successful register or login, navigate to a stub MCQ page
 - The MCQ page is a placeholder only (title and short copy). No question CRUD
@@ -65,10 +72,9 @@ We believe that a simple register, login, and logout flow backed by a hashed-pas
 ### Cut
 
 - Social logins (Google, Microsoft, etc.) — extra providers and OAuth flows are not needed to prove multi-teacher accounts
-- Tokens (JWT, API keys, bearer auth) — this phase only checks credentials and then navigates
-- Session management, cookies, and server-side login state — explicitly deferred; logout does not invalidate a server session because none exists
+- Tokens (JWT, API keys, bearer auth) — not used; login state is a D1 session id in an HttpOnly cookie
 - Slow salted password hashing (bcrypt / Argon2 / PBKDF2) — this phase uses SHA-256 via Web Crypto so the client can hash before POST without a new native dependency on Workers; a later sprint can replace this with a salted server-side KDF
-- Protecting `/mcqs` from unauthenticated visits — without sessions there is nothing to gate the route; the stub is reachable by URL
+- Signing out **every** browser at once — logout must delete only the session id in this browser’s cookie
 - `@cloudflare/vitest-pool-workers` and tests that hit a real D1/Workers runtime — unit tests mock D1 and `getCloudflareContext()`. Raise with the user before changing how the suite runs
 
 ---
@@ -107,6 +113,8 @@ CREATE INDEX idx_users_email ON users (email);
 | `created_at` / `updated_at` | Set on insert; `updated_at` refreshed on update |
 
 Username uniqueness and email uniqueness are independent. Two different users cannot share a username or an email. One user may use the same string for both.
+
+Each login or register also inserts a `sessions` row (`migrations/0002_create_sessions.sql`): `id` (unguessable TEXT), `user_id`, `expires_at` (ISO timestamp, 7 days), `created_at`. Logout deletes by `id` only so two browsers can stay independent.
 
 ### Password hashing
 
@@ -202,13 +210,13 @@ On 200, the client navigates to `/mcqs`.
 
 #### POST /api/logout
 
-**Request Body:** none (empty JSON object is acceptable)
+**Request Body:** none (empty JSON object is acceptable). Send this browser’s `qm_session` cookie (`credentials: "include"`).
 
 **Response:**
 
-- Success (200): `{ "ok": true }`
+- Success (200): `{ "ok": true }` plus `Set-Cookie` that expires `qm_session` on **this** browser
 
-Logout does not look up a user and does not clear a cookie or token. It exists so the UI has a real endpoint to call. After 200, the client navigates to `/login`. Visiting `/mcqs` after logout is still possible in this phase.
+Logout looks up the cookie, deletes **that** `sessions` row (`DELETE FROM sessions WHERE id = ?1`), and clears the cookie. It must not delete other rows for the same `user_id`. After 200, the client navigates to `/login`. Visiting `/mcqs` in this browser then redirects to `/login`. Another browser that still has its own cookie stays on `/mcqs` until it logs out.
 
 No other user HTTP routes are required this feature (no GET current user, no PATCH profile, no DELETE account endpoint). Update and delete live on the service for later features.
 
@@ -268,15 +276,15 @@ Page shells keep the block layout:
 #### MCQ stub (`/mcqs`)
 
 - Placeholder page only: heading such as “Question bank” and copy that this is where teachers will manage multiple-choice questions next
-- A Logout control that POST `/api/logout` then navigates to `/login`
+- `src/app/mcqs/layout.tsx` requires a valid `qm_session` (cookie + D1 row). Missing or expired session → `redirect("/login")`
+- A Logout control that POST `/api/logout` (with credentials) then navigates to `/login`
 - No question forms, lists, or APIs
-- No route guard
 
 #### Logout
 
 - Triggered from `/mcqs` (and any future authenticated chrome)
-- POST `/api/logout`, then navigate to `/login`
-- Do not wait on a session cookie
+- POST `/api/logout` with `credentials: "include"`, then navigate to `/login`
+- Clears this browser only; other browsers keep their cookies and session rows
 
 ---
 
@@ -567,22 +575,26 @@ On Windows PowerShell, chain commands with `;`, not `&&`.
 | `vitest.setup.ts` | `@testing-library/jest-dom/vitest` |
 | `wrangler.jsonc` | D1 binding `DB`, database `quizmaker`, `migrations_dir: "migrations"` |
 | `migrations/0001_create_users.sql` | `users` table |
-| `migrations/users-schema.test.ts` | Asserts migration SQL shape |
+| `migrations/0002_create_sessions.sql` | `sessions` table (one row per browser login) |
+| `migrations/users-schema.test.ts` | Asserts users migration SQL shape |
+| `migrations/sessions-schema.test.ts` | Asserts sessions migration SQL shape |
 | `src/lib/password.ts` | `hashPassword` (trim + SHA-256 hex), `passwordHashesMatch` |
 | `src/lib/password.test.ts` | Known fixture below |
-| `src/lib/services/user-service.ts` | `createUser`, `getUserByUsername`, `getUserByEmail`, `updateUser`, `deleteUser`, `UserConflictError` |
+| `src/lib/services/session-service.ts` | `createSession`, `getSession`, `deleteSession` (by session id only) |
+| `src/lib/session-cookie.ts` | HttpOnly `qm_session` cookie helpers |
 | `src/lib/auth-schemas.ts` | Zod `registerBodySchema`, `loginBodySchema`, `firstZodMessage` |
 | `src/lib/http.ts` | `jsonError`, `readJsonBody` |
 | `src/app/api/register/route.ts` | `POST` → 201 / 400 / 409 / 500 |
 | `src/app/api/login/route.ts` | `POST` → 200 / 400 / 401 / 500 |
-| `src/app/api/logout/route.ts` | `POST` → `{ ok: true }`, no user service |
+| `src/app/api/logout/route.ts` | `POST` → `{ ok: true }`, deletes this browser’s session, expires cookie |
 | `src/app/page.tsx` | Landing: Register + Log in |
 | `src/app/register/page.tsx` | shadcn signup-block shell, renders `SignupForm` |
 | `src/app/login/page.tsx` | shadcn login-block shell, renders `LoginForm` |
+| `src/app/mcqs/layout.tsx` | Redirects to `/login` when this browser has no valid session |
 | `src/app/mcqs/page.tsx` | Question-bank stub + `LogoutButton` |
-| `src/components/login-form.tsx` | Username + password; hash then POST `/api/login` |
+| `src/components/login-form.tsx` | Username + password; hash then POST `/api/login` with `credentials: "include"` |
 | `src/components/signup-form.tsx` | First/last/username/email/password/confirm; hash then POST `/api/register` |
-| `src/components/logout-button.tsx` | POST `/api/logout` then `router.push("/login")` |
+| `src/components/logout-button.tsx` | POST `/api/logout` with credentials then `router.push("/login")` |
 | `src/app/layout.tsx` | Title/description: Quiz Maker |
 | `.cursor/rules/auth.mdc` | Auth conventions for later sprints |
 | `.cursor/rules/d1.mdc` | D1 query conventions (binding exists) |
@@ -695,7 +707,7 @@ Register POSTs `{ firstName, lastName, username, email, passwordHash }` only —
 - Numbered SQL placeholders (`?1`, `?2`) only.
 - Never apply D1 migrations with `--remote` unless the user asks.
 - Never run `npm run deploy` unless the user asks.
-- There is no current-user context after login. Do not add middleware that checks a cookie.
+- Login/register set `qm_session`. Logout deletes **that** session id only. Do not add JWT.
 - Confirm-password exists only in the browser.
 - HTTP must omit `passwordHash`; service lookups may include it for login comparison.
 
@@ -738,9 +750,10 @@ UI tests mock `fetch` and `next/navigation` `useRouter`. Query by role. Use `use
 - [x] Wrong username or wrong password returns 401 with `"Invalid username or password"`
 - [x] Successful login responds 200 without `passwordHash` and the UI goes to `/mcqs`
 - [x] `/mcqs` is a stub (no MCQ functionality) and includes logout
-- [x] Logout calls `POST /api/logout` and the UI goes to `/login`
-- [x] No cookies, session store, or tokens are introduced
-- [x] No social login
+- [x] `/mcqs` requires a valid session cookie for this browser; a new browser is sent to `/login`
+- [x] Logout calls `POST /api/logout`, expires this browser’s cookie, and deletes only that session row
+- [x] Logout in one browser does not delete other browsers’ sessions
+- [x] No JWT, OAuth, or third-party auth library
 - [x] User service supports create, update, and delete against D1
 - [x] Each phase’s Vitest tests were written first, failed for a real reason, then passed after that phase’s implementation
 - [x] `npm test` (Vitest) is green — **11 files, 51 passed** (2026-09-02)
@@ -804,8 +817,11 @@ Measured during Phase 5. No analytics stack.
 - **Risk**: Unique constraint errors from D1 may not match the expected SQLITE string.
 - **Mitigation**: Service already maps `UNIQUE constraint failed: users.username|email`. If a future D1 driver changes the message, 409s become 500s — update the regex.
 
-- **Risk**: Without sessions, “logged in” is only client navigation. `/mcqs` is public.
-- **Mitigation**: Do not imply authorization. The next sprint that needs a real current user should add sessions **before** treating `/mcqs` as private.
+- **Risk**: Logout that deletes every session for a user would sign other browsers out.
+- **Mitigation**: `deleteSession` uses `WHERE id = ?1` only. `/mcqs` layout validates the cookie against D1.
+
+- **Risk**: Production D1 will 500 on login until `0002_create_sessions.sql` is applied remotely.
+- **Mitigation**: Apply locally with `--local`. Remote apply only when the user asks. Document this in Current Status.
 
 ### User Experience Risks
 
@@ -869,6 +885,20 @@ Measured during Phase 5. No analytics stack.
 **Cause**: HTTPS GitHub auth prompt was cancelled.
 **Solution**: User must complete GitHub login (or switch to SSH). Agents should not loop on push.
 
+### Logout signs every browser out
+
+**Problem**: Logging out in Chrome also logs out Firefox.
+**Cause**: Logout deleted all sessions for the user (`WHERE user_id = …`).
+**Solution**: Delete only `WHERE id = ?1` for this browser’s `qm_session` cookie.
+**Code Reference**: `src/lib/services/session-service.ts`, `src/app/api/logout/route.ts`
+
+### New browser still sees `/mcqs` without logging in
+
+**Problem**: Incognito or another browser can open `/mcqs` with no password.
+**Cause**: `/mcqs` was not checking a session, or production D1 is missing the `sessions` table.
+**Solution**: Keep `src/app/mcqs/layout.tsx`. Apply `0002_create_sessions.sql` locally (`--local`). For production, apply remote only when the user asks.
+**Code Reference**: `src/app/mcqs/layout.tsx`
+
 ### Cursor debug logs and agent instrumentation
 
 **Problem**: `debug-*.log` or `#region agent log` fetch calls appear in the working tree.
@@ -887,7 +917,7 @@ Write a **new** technical PRD for that feature. Do not reopen this one except to
 Constraints the next agent must keep:
 
 1. **Do not re-build auth.** Reuse `createUser`, `getUserByUsername`, `hashPassword`, and the existing pages/routes.
-2. **`/mcqs` is public.** There are no sessions. Anyone with the URL can load it. If MCQ writes must be teacher-only, add sessions/cookies first and expand scope with the user — do not silently add JWT/OAuth.
+2. **`/mcqs` requires a session.** Reuse `getSession` and `qm_session`. Do not add JWT/OAuth. Logout must stay per-browser (`DELETE … WHERE id = ?1`).
 3. **Keep client-side SHA-256** unless the user asks to change hashing.
 4. **User service already has `updateUser` / `deleteUser`.** Use them; do not duplicate SQL in routes.
 5. **TDD with existing Vitest.** Do not reinstall the harness. Pin plugin-react v4 if adding related packages.
@@ -902,7 +932,7 @@ Constraints the next agent must keep:
 This PRD is **complete**. Use it as context, not as a build plan.
 
 1. Do not implement Phases 1–5 again. The code and tests already exist.
-2. Do not add MCQ CRUD, OAuth, JWT, cookies, or session middleware in the name of “finishing auth”.
+2. Do not add MCQ CRUD, OAuth, or JWT in the name of “finishing auth”. Sessions are already per-browser HttpOnly cookies.
 3. New work: write a new PRD, TDD with Vitest, follow `.cursor/skills/testing/SKILL.md` and `.cursor/rules/auth.mdc`.
 4. Keep `AGENTS.md` Project current when the product changes again.
 5. Never apply D1 migrations remotely and never deploy unless asked.
@@ -915,8 +945,8 @@ This PRD is **complete**. Use it as context, not as a build plan.
 ## Current Status
 
 **Last Updated**: 2026-09-02
-**Current Phase**: Phase 5 - Verify
-**Status**: COMPLETED — register / login / logout is shipped, user-verified, committed, and pushed
-**Git**: Branch `feature/register-login-logout` is on GitHub: https://github.com/veenah-svg/quiz-maker/tree/feature/register-login-logout. Phase 5 docs commit: `1b82136`. This PRD was updated after the user re-verified the live app and the branch was pushed.
-**Verification**: `npm test` 51/51; `npm run lint` exit 0; `npm run build` succeeded (routes `/`, `/login`, `/register`, `/mcqs`, `/api/register`, `/api/login`, `/api/logout`). The user confirmed the full path locally and on the deployed Cloudflare app (register → `/mcqs` → logout → login).
-**Next Steps**: Open a PR to merge this branch, then write a new PRD for the MCQ question bank on `/mcqs`. Do not re-implement auth.
+**Current Phase**: Per-browser sessions (follow-on to Phase 5)
+**Status**: COMPLETED — register / login / logout plus HttpOnly `qm_session` (D1 `sessions`). Logout is per-browser. `/mcqs` requires a session.
+**Git**: Branch `feature/register-login-logout`
+**Verification**: `npm test` 15 files / **68 passed**; `npm run lint` exit 0; `npm run build` succeeded (`/mcqs` is now dynamic). Local D1 has `0002_create_sessions.sql` applied with `--local`. **Production will not get the `sessions` table until the user applies that migration remotely** — do not run `--remote` unless asked.
+**Next Steps**: Confirm a new/private window must log in, and that logout in one browser leaves the other signed in. Then MCQ CRUD PRD.

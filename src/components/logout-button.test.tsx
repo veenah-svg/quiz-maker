@@ -30,7 +30,7 @@ describe("LogoutButton", () => {
 
 		expect(fetch).toHaveBeenCalledWith(
 			"/api/logout",
-			expect.objectContaining({ method: "POST" }),
+			expect.objectContaining({ method: "POST", credentials: "include" }),
 		);
 		expect(push).toHaveBeenCalledWith("/login");
 	});

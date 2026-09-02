@@ -1,6 +1,6 @@
 ---
 description: Register, login, and logout conventions for Quiz Maker
-globs: src/lib/password.ts,src/lib/auth-schemas.ts,src/lib/services/user-service.ts,src/app/api/**/*.ts,src/components/login-form.tsx,src/components/signup-form.tsx,src/components/logout-button.tsx,src/app/login/**,src/app/register/**,src/app/mcqs/**
+globs: src/lib/password.ts,src/lib/auth-schemas.ts,src/lib/session-cookie.ts,src/lib/services/user-service.ts,src/lib/services/session-service.ts,src/app/api/**/*.ts,src/components/login-form.tsx,src/components/signup-form.tsx,src/components/logout-button.tsx,src/app/login/**,src/app/register/**,src/app/mcqs/**
 alwaysApply: false
 ---
 
@@ -12,11 +12,16 @@ This slice is **shipped**. Do not re-implement it. As-built details:
 ## What exists
 
 - D1 `users` table via `migrations/0001_create_users.sql`
+- D1 `sessions` table via `migrations/0002_create_sessions.sql`
 - `src/lib/password.ts` — `hashPassword` (trim + SHA-256 hex), `passwordHashesMatch`
+- `src/lib/session-cookie.ts` — HttpOnly `qm_session` cookie (per browser)
 - `src/lib/services/user-service.ts` — `createUser`, `getUserByUsername`,
   `getUserByEmail`, `updateUser`, `deleteUser`, `UserConflictError`
+- `src/lib/services/session-service.ts` — `createSession`, `getSession`,
+  `deleteSession` (by session id only)
 - `POST /api/register`, `POST /api/login`, `POST /api/logout`
 - Pages: `/`, `/register` (`SignupForm`), `/login` (`LoginForm`), `/mcqs` stub
+  (layout requires a valid session)
 
 ## Hard rules
 
@@ -24,22 +29,20 @@ This slice is **shipped**. Do not re-implement it. As-built details:
   POST `passwordHash` only. Never send plaintext. Never hash again on the server.
 - Login is by **username**, not email. Username and email may be the same string
   for one user; uniqueness is still independent per column.
-- Never import `user-service` (or any D1 module) into a `'use client'` file.
-  Client forms `fetch` `/api/*`.
+- Never import `user-service` or `session-service` (or any D1 module) into a
+  `'use client'` file. Client forms `fetch` `/api/*` with `credentials: "include"`.
 - Get D1 with `await getCloudflareContext({ async: true })`, then `env.DB`.
 - Success JSON is a `PublicUser` (no `passwordHash`). Login 401 message is always
   `"Invalid username or password"`.
-- There are **no sessions, cookies, or tokens**. Logout only POSTs `/api/logout`
-  then navigates to `/login`. `/mcqs` is reachable by URL. Do not add JWT, OAuth,
-  cookies, or middleware unless the user asks.
+- **Per-browser sessions.** Login/register inserts a `sessions` row and sets
+  HttpOnly `qm_session`. Logout deletes **that cookie’s id only** and expires the
+  cookie. Do not `DELETE FROM sessions WHERE user_id = …` on logout — that would
+  sign every browser out.
+- `/mcqs` is gated in `src/app/mcqs/layout.tsx`. A new browser with no cookie
+  must log in. Do not add JWT or OAuth unless the user asks.
 - Do not add bcrypt, an auth library, or `react-hook-form` unless asked.
 
 ## Forms
 
 Auth UIs are client components (Web Crypto). Use shadcn `field` + `FieldError`,
 not a Form component. No Google button. No forgot-password link.
-
-## Next feature
-
-MCQ work extends `/mcqs`. Reuse this auth. If writes must be teacher-only, ask
-before adding sessions — do not silently protect the route.
