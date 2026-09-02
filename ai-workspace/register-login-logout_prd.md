@@ -346,7 +346,7 @@ Run `npm test` — these fail (modules missing or unimplemented).
 - `src/lib/password.ts` + `src/lib/password.test.ts`
 - `src/lib/services/user-service.ts` + `src/lib/services/user-service.test.ts`
 
-### Phase 3: HTTP endpoints - PLANNED
+### Phase 3: HTTP endpoints - COMPLETED
 
 **Objective**: Register, login, and logout work over POST, proven by route-handler unit tests.
 
@@ -377,7 +377,7 @@ Run `npm test` — new route tests fail.
 **Then implement**:
 1. Propose adding Zod (not installed) for request bodies; Vitest packages are already approved. Do not add other new dependencies
 2. Implement `POST /api/register`, `POST /api/login`, `POST /api/logout`
-3. Routes get `env.DB` via `getCloudflareContext()` and call the user service
+3. Routes get `env.DB` via `getCloudflareContext({ async: true })` and call the user service
 4. Register and login never echo `passwordHash`
 5. Re-run `npm test` until all tests so far are green
 
@@ -471,8 +471,10 @@ Run `npm test` — UI tests fail until the components exist.
 - `wrangler.jsonc` — D1 `DB` binding for database `quizmaker` (local placeholder `database_id` until a remote D1 is created)
 - `migrations/0001_create_users.sql` — `users` table
 - `migrations/users-schema.test.ts` — asserts migration SQL shape
-- `src/lib/password.ts` / `src/lib/password.test.ts` — SHA-256 hex helper (`hashPassword`)
+- `src/lib/password.ts` / `src/lib/password.test.ts` — `hashPassword` (SHA-256 hex) and `passwordHashesMatch`
 - `src/lib/services/user-service.ts` / `src/lib/services/user-service.test.ts` — D1-backed `createUser`, `getUserByUsername`, `getUserByEmail`, `updateUser`, `deleteUser`; `UserConflictError` for unique username/email
+- `src/lib/auth-schemas.ts` — Zod register/login bodies; `passwordHash` must be 64 hex chars
+- `src/lib/http.ts` — JSON error helper and body reader
 - `src/app/api/register/route.ts` / `route.test.ts` — `POST` register
 - `src/app/api/login/route.ts` / `route.test.ts` — `POST` login
 - `src/app/api/logout/route.ts` / `route.test.ts` — `POST` logout
@@ -507,7 +509,7 @@ export type CreateUserInput = {
 // Route handlers obtain DB from Cloudflare context, then call the service
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-const { env } = await getCloudflareContext();
+const { env } = await getCloudflareContext({ async: true });
 const user = await createUser(env.DB, input);
 ```
 
@@ -614,9 +616,6 @@ These are directional for a first auth slice with no analytics stack yet. Measur
 ### Approved packages (this feature)
 
 - Vitest and the testing skill’s devDependencies: `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `@testing-library/user-event`, `jsdom`, `vite-tsconfig-paths`
-
-### Proposed package (ask before adding)
-
 - `zod` — validate register and login JSON bodies in route handlers
 
 ### Environment
@@ -717,7 +716,7 @@ When working with this PRD:
 7. Record real file paths under Technical Implementation Details once they exist
 8. Check off Acceptance Criteria only when the behavior has been verified (tests green is not enough for UI; Phase 5 still needs a browser path)
 9. Add Troubleshooting entries when something actually breaks
-10. Vitest packages are approved. Propose Zod before installing it; do not add other auth libraries
+10. Vitest packages and Zod are approved for this feature. Do not add other auth libraries
 11. Never apply D1 migrations remotely and never deploy unless asked
 12. Cite code as `filepath:line-number`
 13. After the feature works, update `AGENTS.md` Project so it describes Quiz Maker and this auth slice instead of an unmodified starter
@@ -727,6 +726,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated**: 2026-09-02
-**Current Phase**: Phase 2 - User service and password helper
-**Status**: COMPLETED — waiting for review before Phase 3
-**Next Steps**: After review, start Phase 3 with failing register/login/logout route tests.
+**Current Phase**: Phase 3 - HTTP endpoints
+**Status**: COMPLETED — waiting for review before Phase 4
+**Next Steps**: After review, start Phase 4 with failing UI tests for register, login, landing, and logout.
