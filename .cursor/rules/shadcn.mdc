@@ -48,6 +48,10 @@ base, so check for an equivalent before assuming the command failed.
 There is no `Form` component under Base UI. The form primitive is `field`, which provides
 `FieldSet`, `FieldGroup`, `Field`, `FieldLabel`, `FieldDescription`, and `FieldError`.
 
-Build forms as Server Actions validated with Zod, and surface errors through `FieldError`,
-which accepts an array of `{ message }` objects. Do not introduce `react-hook-form`
-without asking the user first.
+Surface errors through `FieldError`. Do not introduce `react-hook-form` without asking
+the user first.
+
+Auth pages (`LoginForm`, `SignupForm`) are **client** components: they hash with Web
+Crypto, `fetch` `/api/register` or `/api/login`, and show the server `error` string via
+`FieldError`. They are not Server Actions. Other new forms may still use Server Actions
+validated with Zod.

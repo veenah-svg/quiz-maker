@@ -19,9 +19,10 @@
 		"enabled": true
 	},
 	/**
-	 * database_id is a local placeholder until `npx wrangler login` and
-	 * `npx wrangler d1 create quizmaker` can be run; replace it with the
-	 * real ID Wrangler prints. Never apply migrations with --remote.
+	 * Binding DB, database quizmaker. database_id may still be a local
+	 * placeholder if a real remote ID was never committed. If production
+	 * already works, replace this with `npx wrangler d1 list` output — do
+	 * not create a second database. Never apply migrations with --remote.
 	 */
 	"d1_databases": [
 		{

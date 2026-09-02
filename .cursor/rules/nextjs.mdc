@@ -25,10 +25,13 @@ This project uses the Next.js App Router with React Server Components.
 
 ## Data flow
 
-- Use Server Actions for form submissions and mutations. Reach for a route handler in
-  `src/app/api/` only when you need an HTTP endpoint for an external consumer.
+- Auth (register / login / logout) uses **route handlers** in `src/app/api/` because
+  the client must SHA-256-hash the password and POST JSON. Do not convert those forms
+  to Server Actions. See `.cursor/rules/auth.mdc`.
+- For other mutations, prefer Server Actions. Add a route handler when the client must
+  call HTTP (hash-then-POST, external consumers).
 - Validate all Server Action and route handler input with a Zod schema before use.
-  Treat every input as untrusted.
+  Treat every input as untrusted. Auth bodies live in `src/lib/auth-schemas.ts` (Zod v4).
 - Prefer the URL for state that should be shareable or survive a reload.
 
 ## Notes

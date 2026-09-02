@@ -6,10 +6,18 @@ alwaysApply: false
 
 # Cloudflare D1
 
-D1 is Cloudflare's SQLite database. **This starter has no D1 database configured yet.**
-The conventions below apply once one is added, and describe how to add it.
+D1 is Cloudflare's SQLite database. **This app already has D1 configured.** Binding
+`DB`, database name `quizmaker`, migrations in `migrations/`. The `users` table is
+created by `migrations/0001_create_users.sql`. User queries live in
+`src/lib/services/user-service.ts`. Do not recreate the database or the users
+migration.
 
-## Adding D1 to the project
+`wrangler.jsonc` may still show placeholder `database_id`
+`00000000-0000-0000-0000-000000000001`. If production already works, look up the
+real ID with `npx wrangler d1 list` and commit it. Do not run `d1 create` again
+unless the user asks.
+
+## Adding another database (rare)
 
 1. Create the database: `npx wrangler d1 create <name>`
 2. Add the returned `d1_databases` block to `wrangler.jsonc` with binding `DB`.
@@ -17,11 +25,11 @@ The conventions below apply once one is added, and describe how to add it.
 
 ## Access
 
-- Reach the binding through `getCloudflareContext()` from `@opennextjs/cloudflare`,
-  then use `env.DB`.
-- Centralize queries in `src/lib/` rather than calling `env.DB` from components or
-  route handlers directly. Create the module the first time it is needed instead of
-  assuming one already exists.
+- Reach the binding through `getCloudflareContext({ async: true })` from
+  `@opennextjs/cloudflare`, then use `env.DB`. The `{ async: true }` argument is
+  required in this OpenNext app (Promise overload).
+- Centralize queries in `src/lib/services/` rather than calling `env.DB` from
+  components or route handlers directly.
 - D1 is only reachable from server code. Never import a database module into a
   component marked `'use client'`.
 
@@ -34,11 +42,16 @@ The conventions below apply once one is added, and describe how to add it.
 - `all()` returns `{ results }`. Prefer reading the first element of `results` over
   `first()`, which behaves inconsistently across local and remote.
 
+```ts
+const { results } = await db.prepare(sql).bind(...params).all<Row>();
+return results[0] ?? null;
+```
+
 ## Migrations
 
 - Every schema change is a migration. Do not alter the schema with ad-hoc SQL.
-- Create with `npx wrangler d1 migrations create <db> <description>`.
-- List with `npx wrangler d1 migrations list <db>`.
-- Apply locally with `npx wrangler d1 migrations apply <db> --local`.
+- Create with `npx wrangler d1 migrations create quizmaker <description>`.
+- List with `npx wrangler d1 migrations list quizmaker`.
+- Apply locally with `npx wrangler d1 migrations apply quizmaker --local`.
 - **Never apply migrations to the remote database.** Do not run `migrations apply` with
   `--remote`. Remote schema changes are the user's decision to make and execute.

@@ -20,8 +20,9 @@ Code must be compatible with the Workers runtime.
 ## Runtime constraints
 
 - No Node built-ins beyond what `nodejs_compat` provides. Avoid `fs` and native modules.
-- Access bindings through `getCloudflareContext()` from `@opennextjs/cloudflare`,
-  not through a global `env`.
+- Access bindings through `getCloudflareContext({ async: true })` from
+  `@opennextjs/cloudflare`, not through a global `env`. The `{ async: true }`
+  argument is required (OpenNext Promise overload). D1 is already bound as `DB`.
 
 ## Secrets and environment
 

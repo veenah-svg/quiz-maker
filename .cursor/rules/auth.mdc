@@ -1,0 +1,45 @@
+---
+description: Register, login, and logout conventions for Quiz Maker
+globs: src/lib/password.ts,src/lib/auth-schemas.ts,src/lib/services/user-service.ts,src/app/api/**/*.ts,src/components/login-form.tsx,src/components/signup-form.tsx,src/components/logout-button.tsx,src/app/login/**,src/app/register/**,src/app/mcqs/**
+alwaysApply: false
+---
+
+# Auth (register / login / logout)
+
+This slice is **shipped**. Do not re-implement it. As-built details:
+`ai-workspace/register-login-logout_prd.md`.
+
+## What exists
+
+- D1 `users` table via `migrations/0001_create_users.sql`
+- `src/lib/password.ts` — `hashPassword` (trim + SHA-256 hex), `passwordHashesMatch`
+- `src/lib/services/user-service.ts` — `createUser`, `getUserByUsername`,
+  `getUserByEmail`, `updateUser`, `deleteUser`, `UserConflictError`
+- `POST /api/register`, `POST /api/login`, `POST /api/logout`
+- Pages: `/`, `/register` (`SignupForm`), `/login` (`LoginForm`), `/mcqs` stub
+
+## Hard rules
+
+- Hash the password **in the browser** with `hashPassword` from `@/lib/password`.
+  POST `passwordHash` only. Never send plaintext. Never hash again on the server.
+- Login is by **username**, not email. Username and email may be the same string
+  for one user; uniqueness is still independent per column.
+- Never import `user-service` (or any D1 module) into a `'use client'` file.
+  Client forms `fetch` `/api/*`.
+- Get D1 with `await getCloudflareContext({ async: true })`, then `env.DB`.
+- Success JSON is a `PublicUser` (no `passwordHash`). Login 401 message is always
+  `"Invalid username or password"`.
+- There are **no sessions, cookies, or tokens**. Logout only POSTs `/api/logout`
+  then navigates to `/login`. `/mcqs` is reachable by URL. Do not add JWT, OAuth,
+  cookies, or middleware unless the user asks.
+- Do not add bcrypt, an auth library, or `react-hook-form` unless asked.
+
+## Forms
+
+Auth UIs are client components (Web Crypto). Use shadcn `field` + `FieldError`,
+not a Form component. No Google button. No forgot-password link.
+
+## Next feature
+
+MCQ work extends `/mcqs`. Reuse this auth. If writes must be teacher-only, ask
+before adding sessions — do not silently protect the route.

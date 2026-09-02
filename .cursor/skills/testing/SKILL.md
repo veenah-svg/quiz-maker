@@ -9,13 +9,23 @@ paths:
 
 # Testing with Vitest
 
-Vitest is **not installed in this starter**. Set it up the first time tests are needed.
+Vitest **is installed**. Do not reinstall it for new tests. Scripts:
+
+- `npm test` — `vitest run`
+- `npm test:watch` — `vitest`
+
+Config is `vitest.config.ts` at the repo root. Matchers load from `vitest.setup.ts`
+(`@testing-library/jest-dom/vitest`). `vite-tsconfig-paths` makes the `@/` alias
+resolve.
+
+If the harness must be reinstalled, **pin `@vitejs/plugin-react` to v4** (`^4.3.4`
+or the repo’s `^4.7.0`). v6 pulls Babel 8 and conflicts with shadcn’s Babel 7 tree.
 
 ```bash
-npm install -D vitest @vitejs/plugin-react @testing-library/react jsdom vite-tsconfig-paths
+npm install -D vitest @vitejs/plugin-react@^4.3.4 @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom vite-tsconfig-paths
 ```
 
-Add a `vitest.config.ts` at the repo root:
+Shipped config:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -27,18 +37,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    setupFiles: ["./vitest.setup.ts"],
   },
 });
-```
-
-`vite-tsconfig-paths` is what makes the `@/` alias resolve in tests. Without it every
-import of `@/lib/...` fails.
-
-Then add the scripts:
-
-```json
-"test": "vitest run",
-"test:watch": "vitest"
 ```
 
 ## What makes a test worth writing
@@ -79,7 +80,8 @@ vi.mock("server-only", () => ({}));
 
 ## Testing code that touches Cloudflare bindings
 
-`getCloudflareContext()` does not work under jsdom. Mock it and supply a fake `env`:
+`getCloudflareContext()` does not work under jsdom. Mock it and supply a fake `env`.
+Production code uses `{ async: true }`; the mock should still return a Promise:
 
 ```ts
 vi.mock("@opennextjs/cloudflare", () => ({
@@ -89,8 +91,9 @@ vi.mock("@opennextjs/cloudflare", () => ({
 }));
 ```
 
-Keep D1 access behind a module in `src/lib/` so tests mock that one module rather than
-reconstructing the whole D1 prepared-statement chain.
+Keep D1 access behind `src/lib/services/` so tests mock that module rather than
+reconstructing the whole D1 prepared-statement chain, unless the test is specifically
+for the service (then inject a fake `prepare` / `bind` / `all`).
 
 If you need to exercise real Workers runtime behavior rather than mock it, that requires
 `@cloudflare/vitest-pool-workers` and a different config. Raise it with the user before
@@ -111,3 +114,5 @@ models real interaction more faithfully.
 
 Server Components cannot be rendered by Testing Library. Test their data-fetching logic
 directly as plain functions, and reserve component rendering for client components.
+Auth forms (`LoginForm`, `SignupForm`, `LogoutButton`) are client components for that
+reason. Mock `fetch` and `next/navigation` `useRouter` in those tests.
