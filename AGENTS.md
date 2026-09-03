@@ -13,7 +13,8 @@ deletes **only** that cookie’s session, so other browsers stay signed in. A ne
 browser has no cookie and must log in again.
 
 The as-built auth contract is `ai-workspace/register-login-logout_prd.md`. Do not
-re-implement that feature. The next product work is MCQ CRUD on `/mcqs` (new PRD).
+re-implement that feature. MCQ persistence is in `src/lib/services/mcq-service.ts`
+(`ai-workspace/mcq-crud_prd.md` Phase 2). `/mcqs` is still a stub until HTTP/UI phases.
 
 ## Stack
 
@@ -39,8 +40,8 @@ src/app/            Routes, layouts, and global styles (App Router)
 src/app/api/        HTTP route handlers (register, login, logout)
 src/components/     Feature UI (login-form, signup-form, logout-button)
 src/components/ui/  shadcn/ui components (generated; avoid hand-editing)
-src/lib/            Shared utilities (`password.ts`, `auth-schemas.ts`, `http.ts`, `session-cookie.ts`)
-src/lib/services/   Domain logic (`user-service.ts`, `session-service.ts`) — server-only, no `'use client'`
+src/lib/            Shared utilities (`password.ts`, `auth-schemas.ts`, `mcq-schemas.ts`, `http.ts`, `session-cookie.ts`)
+src/lib/services/   Domain logic (`user-service.ts`, `session-service.ts`, `mcq-service.ts`) — server-only, no `'use client'`
 migrations/         D1 SQL migrations
 ai-workspace/       Technical PRDs and planning documents
 .cursor/rules/      File-scoped conventions (including auth.mdc)
