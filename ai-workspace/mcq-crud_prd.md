@@ -130,12 +130,28 @@ The questions migration did not exist before this work, and cascade/ownership ca
 - `src/lib/services/mcq-service.ts` + `src/lib/services/mcq-service.test.ts`
 - Local `questions` / `choices` tables
 
-**Verification (2026-09-03)**:
-1. New tests failed first (missing modules / missing `CREATE TABLE questions`)
-2. `npm test` — **18 files, 99 passed** (31 of those are Phase 2)
+**As-built implementation (do not recreate)**:
+
+| Item | Location / value |
+|------|------------------|
+| TDD origin | Commit `0dea9f4` (`migrations/0003_create_questions.sql`, schema/Zod/service tests, then `mcq-schemas.ts` / `mcq-service.ts`). This session did **not** rewrite those files; they already existed and the Phase 2 tests were already green. |
+| Schema tests | `migrations/questions-schema.test.ts` — `questions` / `choices`, TEXT PKs, `owner_id` FK CASCADE, `is_correct INTEGER`, `position`, indexes |
+| Zod | `src/lib/mcq-schemas.ts` — trim, non-empty stem/labels, 2–6 choices, exactly one `isCorrect` |
+| Service | `src/lib/services/mcq-service.ts` — `createQuestion` / `getQuestion` / `listQuestions` / `updateQuestion` / `deleteQuestion`; `McqValidationError` / `McqNotFoundError` / `McqForbiddenError` |
+| Ownership | `ownerId` is a service argument (session user), never from the JSON body. Mutations `WHERE id = ?2 AND owner_id = ?3` after a load that throws not-found vs forbidden |
+| Choices | `position` is 0-based array index; SELECT `ORDER BY position ASC`; mapper also sorts. `isCorrect` ↔ SQLite `1`/`0` via `toSqliteBool` / `fromSqliteBool` |
+| Cascade | `deleteQuestion` issues `DELETE FROM questions` only. Update replaces the choice set with `DELETE FROM choices WHERE question_id = ?1` then insert (not question-delete cascade) |
+
+**Verification (2026-09-03, this session — local D1, no `--remote`)**:
+
+1. Phase 2 tests: `migrations/questions-schema.test.ts`, `src/lib/mcq-schemas.test.ts`, `src/lib/services/mcq-service.test.ts` — **3 files, 31 passed** (exit 0)
+2. Full suite: `npm test` — **18 files, 99 passed** (exit 0)
 3. `npm run lint` — exit 0
-4. `npx wrangler d1 migrations apply quizmaker --local` — `0003_create_questions.sql` ✅
-5. No HTTP or `/mcqs` UI work in this phase
+4. `npx wrangler d1 migrations apply quizmaker --local` — **No migrations to apply** (`0003_create_questions.sql` already on local D1)
+5. `PRAGMA table_info(questions)` / `choices` plus `sqlite_master` SQL — TEXT PKs, `owner_id`, `is_correct INTEGER`, `position`, both `ON DELETE CASCADE` FKs
+6. `/mcqs` remains the auth-gated stub. No Phase 3 HTTP routes were added in this session.
+
+Phase 2 gate is met. Phase 3 was not started in this session.
 
 ### Phase 3: HTTP endpoints - PLANNED
 
@@ -306,8 +322,12 @@ Choice `position` is the 0-based index of the submitted array.
 ## Current Status
 
 **Last Updated**: 2026-09-03
-**Current Phase**: Phase 2: Data Access & Validation
-**Status**: COMPLETED
-**Git**: Commit locally as `Phase 2: Data Access & Validation`
-**Verification**: `npm test` 18 files / **99 passed**; `npm run lint` exit 0; local D1 has `0003_create_questions.sql` applied with `--local`. Production will not get these tables until the user applies that migration remotely.
-**Next Steps**: Phase 3 HTTP endpoints when asked. Do not start UI yet.
+**Current Phase**: Phase 2 complete (re-verified this session). Phase 3 HTTP is **not** started.
+**Status**: Phase 2 COMPLETED — Zod validation, `mcq-service` CRUD, numbered placeholders, ownership, choice order, 0/1 boolean mapping, CASCADE on question delete. Schema shipped in `0003_create_questions.sql` (Phase 1 delivered with Phase 2).
+**Git**: Branch `feature/register-login-logout`. Implementation landed in `0dea9f4`. This session records re-verification only.
+**Verification (2026-09-03, this session)**:
+- Phase 2 tests: **31/31 passed** (schema + Zod + service)
+- Full suite: `npm test` — **18 files / 99 passed**
+- `npm run lint` — exit 0
+- Local D1: migrations already applied (`--local` only); `questions` and `choices` match the PRD schema including CASCADE
+**Next Steps**: Phase 3 HTTP endpoints when asked. Do not start UI yet. Production will not get these tables until the user applies `0003_create_questions.sql` remotely.
