@@ -25,6 +25,13 @@ export const updateQuestionSchema = createQuestionSchema;
 
 export type QuestionInput = z.infer<typeof createQuestionSchema>;
 
+export const questionAttemptSchema = z.object({
+	questionId: z.string().trim().min(1, "question id is required"),
+	choiceId: z.string().trim().min(1, "choice id is required"),
+});
+
+export type QuestionAttemptInput = z.infer<typeof questionAttemptSchema>;
+
 export function firstMcqZodMessage(error: z.ZodError): string {
 	return error.issues[0]?.message ?? "Invalid request";
 }

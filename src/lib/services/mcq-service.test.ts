@@ -3,6 +3,7 @@ import {
 	McqForbiddenError,
 	McqNotFoundError,
 	McqValidationError,
+	checkQuestionAttempt,
 	createQuestion,
 	deleteQuestion,
 	getQuestion,
@@ -340,6 +341,77 @@ describe("mcq service", () => {
 			expect(calls.some((call) => /delete from choices/i.test(call.sql))).toBe(
 				false,
 			);
+		});
+	});
+
+	describe("checkQuestionAttempt", () => {
+		it("scores correctness from stored 1/0, not from the client payload", async () => {
+			const { db, calls } = createFakeDb({
+				questions: [questionRow],
+				choices: choiceRows,
+			});
+
+			const correct = await checkQuestionAttempt(db, {
+				questionId: "q1",
+				choiceId: "c1",
+				isCorrect: false,
+			});
+			const incorrect = await checkQuestionAttempt(db, {
+				questionId: "q1",
+				choiceId: "c2",
+				isCorrect: true,
+			});
+
+			expect(correct).toEqual({
+				questionId: "q1",
+				choiceId: "c1",
+				isCorrect: true,
+			});
+			expect(incorrect).toEqual({
+				questionId: "q1",
+				choiceId: "c2",
+				isCorrect: false,
+			});
+
+			for (const call of calls) {
+				expect(call.bound).not.toContain(true);
+				expect(call.bound).not.toContain(false);
+				expect(call.sql).toMatch(/\?\d/);
+			}
+		});
+
+		it("throws McqNotFoundError when the question or choice is missing", async () => {
+			const missingQuestion = createFakeDb({ questions: [], choices: [] });
+			await expect(
+				checkQuestionAttempt(missingQuestion.db, {
+					questionId: "missing",
+					choiceId: "c1",
+				}),
+			).rejects.toBeInstanceOf(McqNotFoundError);
+
+			const missingChoice = createFakeDb({
+				questions: [questionRow],
+				choices: choiceRows,
+			});
+			await expect(
+				checkQuestionAttempt(missingChoice.db, {
+					questionId: "q1",
+					choiceId: "not-a-choice",
+				}),
+			).rejects.toBeInstanceOf(McqNotFoundError);
+		});
+
+		it("rejects invalid attempt payloads without querying", async () => {
+			const { db, calls } = createFakeDb({
+				questions: [questionRow],
+				choices: choiceRows,
+			});
+
+			await expect(
+				checkQuestionAttempt(db, { questionId: "q1", choiceId: "" }),
+			).rejects.toBeInstanceOf(McqValidationError);
+
+			expect(calls).toHaveLength(0);
 		});
 	});
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createQuestionSchema, updateQuestionSchema } from "@/lib/mcq-schemas";
+import {
+	createQuestionSchema,
+	questionAttemptSchema,
+	updateQuestionSchema,
+} from "@/lib/mcq-schemas";
 
 const validChoices = [
 	{ label: "Paris", isCorrect: true },
@@ -115,5 +119,42 @@ describe("MCQ Zod schemas", () => {
 				choices: validChoices,
 			}).success,
 		).toBe(true);
+	});
+});
+
+describe("questionAttemptSchema", () => {
+	it("accepts trimmed question and choice ids", () => {
+		const parsed = questionAttemptSchema.safeParse({
+			questionId: "  q1  ",
+			choiceId: "  c1  ",
+		});
+
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data).toEqual({ questionId: "q1", choiceId: "c1" });
+		}
+	});
+
+	it("rejects missing or empty ids", () => {
+		expect(questionAttemptSchema.safeParse({}).success).toBe(false);
+		expect(
+			questionAttemptSchema.safeParse({ questionId: "q1", choiceId: "  " }).success,
+		).toBe(false);
+		expect(
+			questionAttemptSchema.safeParse({ questionId: "  ", choiceId: "c1" }).success,
+		).toBe(false);
+	});
+
+	it("does not keep a client-supplied isCorrect flag", () => {
+		const parsed = questionAttemptSchema.safeParse({
+			questionId: "q1",
+			choiceId: "c1",
+			isCorrect: true,
+		});
+
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data).not.toHaveProperty("isCorrect");
+		}
 	});
 });

@@ -1,7 +1,9 @@
 import {
 	createQuestionSchema,
 	firstMcqZodMessage,
+	questionAttemptSchema,
 	updateQuestionSchema,
+	type QuestionAttemptInput,
 	type QuestionInput,
 } from "@/lib/mcq-schemas";
 
@@ -40,6 +42,12 @@ export type Question = {
 	createdAt: string;
 	updatedAt: string;
 	choices: Choice[];
+};
+
+export type QuestionAttemptResult = {
+	questionId: string;
+	choiceId: string;
+	isCorrect: boolean;
 };
 
 type QuestionRow = {
@@ -109,6 +117,14 @@ function parseQuestionInput(
 	input: unknown,
 ): QuestionInput {
 	const parsed = schema.safeParse(input);
+	if (!parsed.success) {
+		throw new McqValidationError(firstMcqZodMessage(parsed.error));
+	}
+	return parsed.data;
+}
+
+function parseQuestionAttemptInput(input: unknown): QuestionAttemptInput {
+	const parsed = questionAttemptSchema.safeParse(input);
 	if (!parsed.success) {
 		throw new McqValidationError(firstMcqZodMessage(parsed.error));
 	}
@@ -301,4 +317,30 @@ export async function deleteQuestion(
 		.prepare("DELETE FROM questions WHERE id = ?1 AND owner_id = ?2")
 		.bind(id, ownerId)
 		.run();
+}
+
+export async function checkQuestionAttempt(
+	db: D1Database,
+	input: unknown,
+): Promise<QuestionAttemptResult> {
+	const parsed = parseQuestionAttemptInput(input);
+	const question = await getQuestion(db, parsed.questionId);
+
+	if (!question) {
+		throw new McqNotFoundError();
+	}
+
+	const choice = question.choices.find(
+		(option) => option.id === parsed.choiceId,
+	);
+
+	if (!choice) {
+		throw new McqNotFoundError("Choice not found");
+	}
+
+	return {
+		questionId: question.id,
+		choiceId: choice.id,
+		isCorrect: choice.isCorrect,
+	};
 }
