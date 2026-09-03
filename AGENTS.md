@@ -15,7 +15,9 @@ browser has no cookie and must log in again.
 The as-built auth contract is `ai-workspace/register-login-logout_prd.md`. Do not
 re-implement that feature. MCQ persistence is in `src/lib/services/mcq-service.ts`
 (`ai-workspace/mcq-crud_prd.md` Phases 1–3). Session-gated Server Actions live in
-`src/app/mcqs/actions.ts`. `/mcqs` is still a stub until the UI phase.
+`src/app/mcqs/actions.ts`. `/mcqs` is still a stub until the UI phase. Server Actions
+validate with Zod and return `{ ok, data }` or `{ ok: false, code, error }`; they do
+not run SQL.
 
 ## Stack
 

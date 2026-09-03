@@ -36,7 +36,7 @@ We believe that a D1-backed question service with Zod validation, owner checks, 
 
 ### Out of Scope (later phases)
 
-- `/mcqs` create/edit/list UI (Phase 4)
+- `/mcqs` create/edit/list UI (Phase 5)
 - Persisting attempt history or a student quiz-taking page
 - Sharing controls beyond “any signed-in teacher can read the bank”
 - Tags, subjects, images, or rich text
@@ -91,22 +91,30 @@ CREATE UNIQUE INDEX idx_choices_question_position ON choices (question_id, posit
 
 ### API Endpoints
 
-MCQ mutations are **Server Actions**, not `/api/questions` route handlers. `/mcqs` layout still requires `qm_session`. Actions resolve the actor from that cookie and pass `session.userId` into the service. They never take `ownerId` from the client payload.
+MCQ mutations are **Server Actions**, not `/api/questions` route handlers. `/mcqs` layout still requires `qm_session`. Actions resolve the actor from that cookie and pass `session.userId` into the service. They never take `ownerId` from the client payload. They never call `db.prepare` / SQL; D1 stays behind `session-service` and `mcq-service`.
 
-| Action | Calls | Owner |
-|--------|--------|--------|
-| `listQuestionsAction` | `listQuestions(db)` | Session required; shared bank |
-| `getQuestionAction(id)` | `getQuestion(db, id)` | Session required; shared read |
-| `createQuestionAction(input)` | `createQuestion(db, session.userId, input)` | Owner from session |
-| `updateQuestionAction(id, input)` | `updateQuestion(db, id, session.userId, input)` | Owner from session |
-| `deleteQuestionAction(id)` | `deleteQuestion(db, id, session.userId)` | Owner from session |
-| `checkQuestionAttemptAction(input)` | `checkQuestionAttempt(db, input)` | Session required; correctness from D1 |
+Every action returns a serializable result:
 
-Missing session → `McqUnauthorizedError`. Service `McqValidationError` / `McqNotFoundError` / `McqForbiddenError` propagate.
+```ts
+type McqActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: "unauthorized" | "validation" | "not_found" | "forbidden" | "server"; error: string };
+```
+
+| Action | Calls | Success | Error codes |
+|--------|--------|---------|-------------|
+| `listQuestionsAction` | `listQuestions(db)` | `{ ok: true, data: Question[] }` | unauthorized, server |
+| `getQuestionAction(id)` | `getQuestion(db, id)` after `questionIdSchema` | `{ ok: true, data: Question }` | unauthorized, validation, not_found, server |
+| `createQuestionAction(input)` | `createQuestion(db, session.userId, parsed)` after `createQuestionSchema` | `{ ok: true, data: Question }` | unauthorized, validation, server |
+| `updateQuestionAction(id, input)` | `updateQuestion(...)` after id + `updateQuestionSchema` | `{ ok: true, data: Question }` | unauthorized, validation, not_found, forbidden, server |
+| `deleteQuestionAction(id)` | `deleteQuestion(...)` after `questionIdSchema` | `{ ok: true, data: { deleted: true } }` | unauthorized, validation, not_found, forbidden, server |
+| `checkQuestionAttemptAction(input)` | `checkQuestionAttempt(db, parsed)` after `questionAttemptSchema` | `{ ok: true, data: QuestionAttemptResult }` | unauthorized, validation, not_found, server |
+
+Zod runs in the action **before** the service is called. Ownership is still enforced in the service (`McqForbiddenError` → `code: "forbidden"`). Attempt `isCorrect` is decided from D1, not the client.
 
 ### User Interface Requirements
 
-Phase 3 has no UI change. `/mcqs` remains the auth-gated stub until Phase 4. Do not import `mcq-service` into `'use client'` files; the UI must call the Server Actions.
+Phase 4 has no UI change. `/mcqs` remains the auth-gated stub until Phase 5. Do not import `mcq-service` into `'use client'` files; the UI must call these Server Actions and branch on `ok`.
 
 ---
 
@@ -206,13 +214,56 @@ Phase 2 gate is met.
 4. No D1 migration and no `--remote`
 5. `src/app/mcqs/page.tsx` unchanged (still stub)
 
-Phase 3 gate is met. Phase 4 was not started.
+Phase 3 gate is met.
 
-### Phase 4: `/mcqs` UI - PLANNED
+### Phase 4: Server Actions - COMPLETED
 
-**Objective**: Signed-in teachers can list, create, edit, and delete questions in the browser by calling the Phase 3 Server Actions.
+**Objective**: Finish the Client → Server Action → Service → DB boundary. Actions validate with Zod, map ownership and other failures to `{ ok, code, error }`, score attempts on the server, and never touch D1 SQL.
 
-### Phase 5: Verify - PLANNED
+**Tests first (expect red)**:
+1. `questionIdSchema` trims and rejects empty ids
+2. No session → `{ ok: false, code: "unauthorized" }`; service and `db.prepare` not called
+3. Invalid create / ids / attempt → `{ ok: false, code: "validation" }` and service not called
+4. Success → `{ ok: true, data }`; create uses session `userId`, not body `ownerId`
+5. Missing question → `not_found`; wrong owner → `forbidden`; unexpected throw → `server` / `"Something went wrong"`
+6. Attempt result `isCorrect` comes from the service; client `isCorrect` is stripped before the service call
+
+**Then implement**:
+1. `questionIdSchema` in `src/lib/mcq-schemas.ts`
+2. Rewrite `src/app/mcqs/actions.ts` to return `McqActionResult<T>`, parse with Zod, catch service errors, never `prepare`
+3. Keep `src/app/mcqs/page.tsx` as the stub (Phase 5)
+
+**Phase gate**: `npm test` green. `npm run lint` exit 0. No UI. No `--remote`.
+
+**Deliverables**:
+- `questionIdSchema` + tests
+- Session-gated actions with success/error results
+- Updated `src/app/mcqs/actions.test.ts`
+
+**As-built implementation**:
+
+| Item | Location / value |
+|------|------------------|
+| Result | `{ ok: true, data }` or `{ ok: false, code, error }` with `unauthorized` / `validation` / `not_found` / `forbidden` / `server` |
+| Zod | Action parses with `createQuestionSchema` / `updateQuestionSchema` / `questionIdSchema` / `questionAttemptSchema` **before** calling the service |
+| Actor | `getSession(env.DB, qm_session)`. Pass `session.userId` as `ownerId`. Unknown `ownerId` on the body is stripped by Zod |
+| DB | Actions pass `env.DB` into services only. No `prepare`, no SQL in `actions.ts` |
+| Attempt | Parsed `{ questionId, choiceId }` only; `isCorrect` from D1 via `checkQuestionAttempt` |
+| UI | `/mcqs` still the stub |
+
+**Verification (2026-09-03, this session)**:
+1. New tests failed first (`questionIdSchema` undefined; actions still threw / returned raw questions)
+2. `npm test` — **19 files, 118 passed** (exit 0)
+3. `npm run lint` — exit 0
+4. `src/app/mcqs/page.tsx` unchanged
+
+Phase 4 gate is met. Phase 5 was not started.
+
+### Phase 5: `/mcqs` UI - PLANNED
+
+**Objective**: Signed-in teachers can list, create, edit, and delete questions in the browser by calling Phase 4 Server Actions and branching on `ok`.
+
+### Phase 6: Verify - PLANNED
 
 **Objective**: Lint, build, and a browser path through CRUD.
 
@@ -226,9 +277,9 @@ Phase 3 gate is met. Phase 4 was not started.
 |------|------|
 | `migrations/0003_create_questions.sql` | `questions` + `choices` with CASCADE |
 | `migrations/questions-schema.test.ts` | Schema shape, ownership FK, cascade, indexes |
-| `src/lib/mcq-schemas.ts` | Zod `createQuestionSchema` / `updateQuestionSchema` / `questionAttemptSchema` |
+| `src/lib/mcq-schemas.ts` | Zod `createQuestionSchema` / `updateQuestionSchema` / `questionAttemptSchema` / `questionIdSchema` |
 | `src/lib/services/mcq-service.ts` | `createQuestion`, `getQuestion`, `listQuestions`, `updateQuestion`, `deleteQuestion`, `checkQuestionAttempt` |
-| `src/app/mcqs/actions.ts` | Session-gated Server Actions; Client → Action → Service → DB |
+| `src/app/mcqs/actions.ts` | Session-gated Server Actions; Zod then service; `{ ok, data \| code, error }` |
 
 ### Service names (shipped)
 
@@ -245,7 +296,7 @@ deleteQuestion(db, id, ownerId)    // DELETE questions only; CASCADE drops choic
 checkQuestionAttempt(db, input)    // { questionId, choiceId } → { …, isCorrect } from D1
 ```
 
-Server Actions (`src/app/mcqs/actions.ts`): `listQuestionsAction`, `getQuestionAction`, `createQuestionAction`, `updateQuestionAction`, `deleteQuestionAction`, `checkQuestionAttemptAction`. `McqUnauthorizedError` when `qm_session` is missing or invalid.
+Server Actions (`src/app/mcqs/actions.ts`) return `McqActionResult<T>`. They validate with Zod, then call the service. They do not throw `McqUnauthorizedError` to the client; missing session is `{ ok: false, code: "unauthorized" }`. They do not run SQL.
 
 - Email/username hashing is unchanged. This module must not be imported from `'use client'`.
 - Reads use `all()` and `results[0]`, not `first()`.
@@ -271,7 +322,7 @@ Choice `position` is the 0-based index of the submitted array.
 - Ask before new dependencies. Zod is already installed.
 - Never apply this migration `--remote` unless the user asks.
 - Do not add JWT. `/mcqs` still uses `qm_session`.
-- Do not start Phase 4 until asked. The UI must call Server Actions, not `mcq-service`.
+- Do not start Phase 5 until asked. The UI must call Server Actions, not `mcq-service`, and must branch on `ok`.
 - Do not add `/api/questions` unless the user asks; Server Actions are the MCQ boundary.
 
 ---
@@ -286,11 +337,13 @@ Choice `position` is the 0-based index of the submitted array.
 - [x] Choices return in `position` order
 - [x] `isCorrect` is boolean in the service; D1 stores 0/1
 - [x] Deleting a question does not issue `DELETE FROM choices` (CASCADE)
-- [x] `npm test` green — **19 files, 111 passed** (2026-09-03)
+- [x] `npm test` green — **19 files, 118 passed** (2026-09-03)
 - [x] `npm run lint` exit 0
 - [x] Session-gated Server Actions call the service (Phase 3)
 - [x] Attempt correctness is decided from D1 `is_correct`, not a client flag
-- [ ] `/mcqs` UI (Phase 4)
+- [x] Actions return `{ ok: true, data }` or `{ ok: false, code, error }` (Phase 4)
+- [x] Actions validate with Zod before the service and do not run SQL
+- [ ] `/mcqs` UI (Phase 5)
 
 ---
 
@@ -300,7 +353,8 @@ Choice `position` is the 0-based index of the submitted array.
 |--------|--------|--------|
 | Phase 2 tests prove data-access rules | All new tests fail then pass | 31 Phase 2 tests passed after implementation |
 | Phase 3 tests prove actions + attempts | Fail then pass | New tests failed (missing exports/module), then 111/111 |
-| Suite stays green | `npm test` exit 0 | 111/111 passed |
+| Phase 4 tests prove action results | Fail then pass | 13 new tests failed (throws / raw payloads), then 118/118 |
+| Suite stays green | `npm test` exit 0 | 118/118 passed |
 | Lint clean | `npm run lint` exit 0 | exit 0 |
 
 ---
@@ -368,24 +422,25 @@ Choice `position` is the 0-based index of the submitted array.
 
 ## Notes for AI Agents
 
-1. Phases 1–3 are **done**. Do not rewrite the service, migration, or Server Actions unless a test fails.
-2. Next phase is `/mcqs` UI. Call `*Action` functions from `src/app/mcqs/actions.ts`. Do not import `mcq-service` into `'use client'` files.
+1. Phases 1–4 are **done**. Do not rewrite the service, migration, or Server Actions unless a test fails.
+2. Next phase is `/mcqs` UI. Call `*Action` functions from `src/app/mcqs/actions.ts` and branch on `result.ok`. Do not import `mcq-service` into `'use client'` files.
 3. Get the actor from `getSession` + `qm_session`. Pass `session.userId` as `ownerId`. Never trust `ownerId` from the client body.
 4. Grade attempts with `checkQuestionAttemptAction`. Do not trust a client `isCorrect`.
 5. TDD with existing Vitest. Do not reinstall the harness.
 6. Never apply D1 migrations remotely and never deploy unless asked.
+7. Server Actions must not call `db.prepare` or write SQL.
 
 ---
 
 ## Current Status
 
 **Last Updated**: 2026-09-03
-**Current Phase**: Phase 3 complete. Phase 4 `/mcqs` UI is **not** started.
-**Status**: Phase 3 COMPLETED — session-gated Server Actions, `checkQuestionAttempt` (correctness from D1), Client → Server Action → Service → DB. Phase 2 service CRUD is reused, not rewritten.
+**Current Phase**: Phase 4 complete. Phase 5 `/mcqs` UI is **not** started.
+**Status**: Phase 4 COMPLETED — Server Actions validate with Zod, return `{ ok, data }` or `{ ok: false, code, error }`, enforce session + ownership via the service, score attempts from D1, and never run SQL.
 **Git**: Branch `feature/register-login-logout`.
 **Verification (2026-09-03, this session)**:
-- TDD: new tests failed first (missing schema, missing `checkQuestionAttempt`, missing `./actions`)
-- `npm test` — **19 files / 111 passed**
+- TDD: new tests failed first (missing `questionIdSchema`; actions threw or returned raw questions)
+- `npm test` — **19 files / 118 passed**
 - `npm run lint` — exit 0
-- `/mcqs` page still a stub; no Phase 4 UI
-**Next Steps**: Phase 4 `/mcqs` UI when asked. Wire the page to the Server Actions. Do not add `/api/questions` unless asked.
+- `/mcqs` page still a stub; no Phase 5 UI
+**Next Steps**: Phase 5 `/mcqs` UI when asked. Wire the page to the Server Actions and handle `code` on failure.

@@ -32,6 +32,11 @@ export const questionAttemptSchema = z.object({
 
 export type QuestionAttemptInput = z.infer<typeof questionAttemptSchema>;
 
+export const questionIdSchema = z
+	.string()
+	.trim()
+	.min(1, "question id is required");
+
 export function firstMcqZodMessage(error: z.ZodError): string {
 	return error.issues[0]?.message ?? "Invalid request";
 }

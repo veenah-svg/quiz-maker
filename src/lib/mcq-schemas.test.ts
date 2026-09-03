@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createQuestionSchema,
 	questionAttemptSchema,
+	questionIdSchema,
 	updateQuestionSchema,
 } from "@/lib/mcq-schemas";
 
@@ -156,5 +157,21 @@ describe("questionAttemptSchema", () => {
 		if (parsed.success) {
 			expect(parsed.data).not.toHaveProperty("isCorrect");
 		}
+	});
+});
+
+describe("questionIdSchema", () => {
+	it("trims a required question id", () => {
+		const parsed = questionIdSchema.safeParse("  q1  ");
+
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data).toBe("q1");
+		}
+	});
+
+	it("rejects an empty question id", () => {
+		expect(questionIdSchema.safeParse("").success).toBe(false);
+		expect(questionIdSchema.safeParse("   ").success).toBe(false);
 	});
 });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cookies } from "next/headers";
 import {
 	McqForbiddenError,
+	McqNotFoundError,
 	checkQuestionAttempt,
 	createQuestion,
 	deleteQuestion,
@@ -11,7 +12,6 @@ import {
 } from "@/lib/services/mcq-service";
 import { getSession } from "@/lib/services/session-service";
 import {
-	McqUnauthorizedError,
 	checkQuestionAttemptAction,
 	createQuestionAction,
 	deleteQuestionAction,
@@ -20,7 +20,8 @@ import {
 	updateQuestionAction,
 } from "./actions";
 
-const mockDb = {} as D1Database;
+const prepare = vi.fn();
+const mockDb = { prepare } as unknown as D1Database;
 
 vi.mock("@opennextjs/cloudflare", () => ({
 	getCloudflareContext: vi.fn(async () => ({
@@ -90,95 +91,153 @@ describe("MCQ server actions", () => {
 		vi.mocked(getSession).mockResolvedValue(null);
 	});
 
-	it("rejects mutations and reads when this browser has no session", async () => {
-		await expect(listQuestionsAction()).rejects.toBeInstanceOf(
-			McqUnauthorizedError,
-		);
-		await expect(getQuestionAction("q1")).rejects.toBeInstanceOf(
-			McqUnauthorizedError,
-		);
-		await expect(createQuestionAction(validInput)).rejects.toBeInstanceOf(
-			McqUnauthorizedError,
-		);
-		await expect(updateQuestionAction("q1", validInput)).rejects.toBeInstanceOf(
-			McqUnauthorizedError,
-		);
-		await expect(deleteQuestionAction("q1")).rejects.toBeInstanceOf(
-			McqUnauthorizedError,
-		);
-		await expect(
-			checkQuestionAttemptAction({ questionId: "q1", choiceId: "c1" }),
-		).rejects.toBeInstanceOf(McqUnauthorizedError);
+	it("returns unauthorized and does not call the service when this browser has no session", async () => {
+		const listed = await listQuestionsAction();
+		const created = await createQuestionAction(validInput);
 
+		expect(listed).toEqual({
+			ok: false,
+			code: "unauthorized",
+			error: expect.any(String),
+		});
+		expect(created).toEqual({
+			ok: false,
+			code: "unauthorized",
+			error: expect.any(String),
+		});
 		expect(listQuestions).not.toHaveBeenCalled();
 		expect(createQuestion).not.toHaveBeenCalled();
-		expect(checkQuestionAttempt).not.toHaveBeenCalled();
+		expect(prepare).not.toHaveBeenCalled();
 	});
 
-	it("creates a question with the session user as owner, not a body ownerId", async () => {
+	it("validates create payloads with Zod before calling the service", async () => {
+		signedIn();
+
+		const result = await createQuestionAction({
+			stem: "",
+			choices: [{ label: "Paris", isCorrect: true }],
+		});
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.code).toBe("validation");
+			expect(result.error).toEqual(expect.any(String));
+		}
+		expect(createQuestion).not.toHaveBeenCalled();
+	});
+
+	it("validates question ids with Zod before get, update, or delete", async () => {
+		signedIn();
+
+		await expect(getQuestionAction("   ")).resolves.toMatchObject({
+			ok: false,
+			code: "validation",
+		});
+		await expect(updateQuestionAction("", validInput)).resolves.toMatchObject({
+			ok: false,
+			code: "validation",
+		});
+		await expect(deleteQuestionAction("")).resolves.toMatchObject({
+			ok: false,
+			code: "validation",
+		});
+
+		expect(getQuestion).not.toHaveBeenCalled();
+		expect(updateQuestion).not.toHaveBeenCalled();
+		expect(deleteQuestion).not.toHaveBeenCalled();
+	});
+
+	it("creates through the service using the session user, not a body ownerId", async () => {
 		signedIn("teacher-1");
 		vi.mocked(createQuestion).mockResolvedValue(question);
 
-		const created = await createQuestionAction({
+		const result = await createQuestionAction({
 			...validInput,
 			ownerId: "attacker",
 		});
 
-		expect(created).toEqual(question);
-		expect(createQuestion).toHaveBeenCalledWith(mockDb, "teacher-1", {
-			...validInput,
-			ownerId: "attacker",
-		});
+		expect(result).toEqual({ ok: true, data: question });
+		expect(createQuestion).toHaveBeenCalledWith(
+			mockDb,
+			"teacher-1",
+			expect.objectContaining({
+				stem: validInput.stem,
+				choices: validInput.choices,
+			}),
+		);
 		expect(createQuestion).not.toHaveBeenCalledWith(
 			mockDb,
 			"attacker",
 			expect.anything(),
 		);
+		expect(prepare).not.toHaveBeenCalled();
 	});
 
-	it("lists and gets questions through the service after a valid session", async () => {
+	it("lists and gets questions as success results after a valid session", async () => {
 		signedIn();
 		vi.mocked(listQuestions).mockResolvedValue([question]);
 		vi.mocked(getQuestion).mockResolvedValue(question);
 
-		await expect(listQuestionsAction()).resolves.toEqual([question]);
-		await expect(getQuestionAction("q1")).resolves.toEqual(question);
-
-		expect(listQuestions).toHaveBeenCalledWith(mockDb);
-		expect(getQuestion).toHaveBeenCalledWith(mockDb, "q1");
-		expect(getSession).toHaveBeenCalledWith(mockDb, "sess-browser-a");
-	});
-
-	it("updates and deletes with the session owner id", async () => {
-		signedIn("teacher-1");
-		vi.mocked(updateQuestion).mockResolvedValue({
-			...question,
-			stem: "Updated stem?",
+		await expect(listQuestionsAction()).resolves.toEqual({
+			ok: true,
+			data: [question],
 		});
-		vi.mocked(deleteQuestion).mockResolvedValue(undefined);
-
-		await updateQuestionAction("q1", validInput);
-		await deleteQuestionAction("q1");
-
-		expect(updateQuestion).toHaveBeenCalledWith(
-			mockDb,
-			"q1",
-			"teacher-1",
-			validInput,
-		);
-		expect(deleteQuestion).toHaveBeenCalledWith(mockDb, "q1", "teacher-1");
+		await expect(getQuestionAction("q1")).resolves.toEqual({
+			ok: true,
+			data: question,
+		});
+		expect(getSession).toHaveBeenCalledWith(mockDb, "sess-browser-a");
+		expect(prepare).not.toHaveBeenCalled();
 	});
 
-	it("propagates ownership errors from the service", async () => {
+	it("returns not_found when getQuestion yields null", async () => {
+		signedIn();
+		vi.mocked(getQuestion).mockResolvedValue(null);
+
+		await expect(getQuestionAction("missing")).resolves.toEqual({
+			ok: false,
+			code: "not_found",
+			error: "Question not found",
+		});
+	});
+
+	it("maps ownership failures to a forbidden result", async () => {
 		signedIn("teacher-2");
 		vi.mocked(updateQuestion).mockRejectedValue(new McqForbiddenError());
 
-		await expect(updateQuestionAction("q1", validInput)).rejects.toBeInstanceOf(
-			McqForbiddenError,
-		);
+		const result = await updateQuestionAction("q1", validInput);
+
+		expect(result).toEqual({
+			ok: false,
+			code: "forbidden",
+			error: "You do not own this question",
+		});
+		expect(prepare).not.toHaveBeenCalled();
 	});
 
-	it("grades an attempt on the server via the service", async () => {
+	it("maps missing rows to a not_found result", async () => {
+		signedIn();
+		vi.mocked(deleteQuestion).mockRejectedValue(new McqNotFoundError());
+
+		await expect(deleteQuestionAction("missing")).resolves.toEqual({
+			ok: false,
+			code: "not_found",
+			error: "Question not found",
+		});
+	});
+
+	it("returns a generic server error for unexpected throws", async () => {
+		signedIn();
+		vi.mocked(listQuestions).mockRejectedValue(new Error("d1 down"));
+
+		await expect(listQuestionsAction()).resolves.toEqual({
+			ok: false,
+			code: "server",
+			error: "Something went wrong",
+		});
+	});
+
+	it("grades an attempt from the service result, ignoring client isCorrect", async () => {
 		signedIn();
 		vi.mocked(checkQuestionAttempt).mockResolvedValue({
 			questionId: "q1",
@@ -193,14 +252,25 @@ describe("MCQ server actions", () => {
 		});
 
 		expect(result).toEqual({
-			questionId: "q1",
-			choiceId: "c1",
-			isCorrect: true,
+			ok: true,
+			data: { questionId: "q1", choiceId: "c1", isCorrect: true },
 		});
 		expect(checkQuestionAttempt).toHaveBeenCalledWith(mockDb, {
 			questionId: "q1",
 			choiceId: "c1",
-			isCorrect: false,
 		});
+		expect(prepare).not.toHaveBeenCalled();
+	});
+
+	it("rejects invalid attempt payloads without calling the service", async () => {
+		signedIn();
+
+		const result = await checkQuestionAttemptAction({
+			questionId: "q1",
+			choiceId: "",
+		});
+
+		expect(result).toMatchObject({ ok: false, code: "validation" });
+		expect(checkQuestionAttempt).not.toHaveBeenCalled();
 	});
 });
