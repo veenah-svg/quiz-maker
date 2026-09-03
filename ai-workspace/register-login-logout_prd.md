@@ -1,5 +1,5 @@
 Date created: 2026-09-02
-Date last modified: 2026-09-02
+Date last modified: 2026-09-03
 
 # Register, Login, and Logout - Technical PRD
 
@@ -382,6 +382,26 @@ Phase 5 additionally requires `npm run lint`, `npm run build`, and a browser pas
 - D1 binding in `wrangler.jsonc`
 - Migration file under `migrations/`
 - Local schema applied
+
+**As-built implementation (do not recreate)**:
+
+| Item | Location / value |
+|------|------------------|
+| TDD origin | Commit `fda61f1` (tests + `0001_create_users.sql` + Vitest harness). This session did **not** rewrite those files; they already existed and the schema tests were already green. |
+| Harness | `vitest.config.ts` (jsdom, `globals`, `setupFiles: ["./vitest.setup.ts"]`), `vitest.setup.ts`, `package.json` scripts `test` / `test:watch` |
+| Schema tests | `migrations/users-schema.test.ts` — reads every `migrations/*.sql` file and asserts the `users` table shape listed above |
+| D1 binding | `wrangler.jsonc`: binding `DB`, database name `quizmaker`, `database_id` `e8b013df-10d1-4860-acf2-503f073d3878`, `migrations_dir: "migrations"` |
+| Generated types | `cloudflare-env.d.ts` includes `DB: D1Database` (Wrangler-generated; not hand-edited) |
+| Users migration | `migrations/0001_create_users.sql` — `TEXT` PK `id` via `lower(hex(randomblob(16)))`, required unique `username` / `email`, required `password_hash`, `created_at` / `updated_at`, indexes `idx_users_username` and `idx_users_email` |
+
+**Verification (2026-09-03, Phase 1 only — local D1, no `--remote`)**:
+
+1. `npm test -- migrations/users-schema.test.ts` — **1 file, 6 passed** (exit 0)
+2. `npx wrangler d1 migrations apply quizmaker --local` — `0001_create_users.sql` **applied** (`✅`). Wrangler also applied pre-existing `0002_create_sessions.sql` in the same local run because that file was already in `migrations/` from earlier work; **no Phase 2 code was written in this session**.
+3. `npx wrangler d1 execute quizmaker --local --command "PRAGMA table_info(users);"` — columns match the Database Schema: `id` TEXT PK, `first_name`, `last_name`, `username`, `email`, `password_hash`, `created_at`, `updated_at`
+4. Full suite after apply: `npm test` — **15 files, 68 passed** (exit 0)
+
+Phase 1 gate is met. Phase 2 was not started in this session.
 
 ### Phase 2: User service and password helper - COMPLETED
 
@@ -944,9 +964,13 @@ This PRD is **complete**. Use it as context, not as a build plan.
 
 ## Current Status
 
-**Last Updated**: 2026-09-02
-**Current Phase**: Per-browser sessions (follow-on to Phase 5)
-**Status**: COMPLETED — register / login / logout plus HttpOnly `qm_session` (D1 `sessions`). Logout is per-browser. `/mcqs` requires a session.
-**Git**: Branch `feature/register-login-logout`
-**Verification**: `npm test` 15 files / **68 passed**; `npm run lint` exit 0; `npm run build` succeeded (`/mcqs` is now dynamic). Local D1 has `0002_create_sessions.sql` applied with `--local`. **Production will not get the `sessions` table until the user applies that migration remotely** — do not run `--remote` unless asked.
-**Next Steps**: Confirm a new/private window must log in, and that logout in one browser leaves the other signed in. Then MCQ CRUD PRD.
+**Last Updated**: 2026-09-03
+**Current Phase**: Phase 1 complete (verified this session). Phases 2–5 remain shipped from prior work and were **not** re-implemented.
+**Status**: Phase 1 COMPLETED — Vitest harness, D1 binding `DB` / `quizmaker`, `migrations/0001_create_users.sql`, schema tests green, local apply only. Register / login / logout plus HttpOnly `qm_session` is already the as-built contract; this session did not start Phase 2.
+**Git**: Branch `feature/register-login-logout`. Phase 1 implementation landed in `fda61f1`.
+**Verification (2026-09-03)**:
+- Phase 1 tests: `migrations/users-schema.test.ts` — 6/6 passed
+- Local D1: `npx wrangler d1 migrations apply quizmaker --local` — `0001_create_users.sql` ✅ (also applied already-present `0002_create_sessions.sql`; not remote)
+- Local `users` table: `PRAGMA table_info(users)` matches the PRD schema
+- Full suite: `npm test` — 15 files / **68 passed**
+**Next Steps**: Do not start Phase 2 of this PRD (it is already shipped). Next product work is a new MCQ CRUD PRD on `/mcqs`.
