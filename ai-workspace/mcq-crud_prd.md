@@ -5,7 +5,7 @@ Date last modified: 2026-09-03
 
 ## Overview/Problem
 
-Quiz Maker already lets teachers register, sign in, and reach `/mcqs`, but that page is still a stub. The product’s purpose is a shared test bank of multiple-choice questions. This feature persists questions and their choices in Cloudflare D1, validates create/update payloads, and enforces that only the owning teacher can change or delete a question. Session-gated **Server Actions** call the MCQ service. The `/mcqs` UI comes in a later phase.
+Quiz Maker already lets teachers register, sign in, and reach `/mcqs`. The product’s purpose is a shared test bank of multiple-choice questions. Teachers can list the bank, preview a question, confirm-delete (owner only), and navigate to create/edit. Session-gated **Server Actions** call the MCQ service. Create and edit **forms** are still placeholders.
 
 Do **not** re-implement register, login, logout, or sessions. Reuse `getSession`, `qm_session`, and `env.DB` from `ai-workspace/register-login-logout_prd.md`.
 
@@ -36,7 +36,7 @@ We believe that a D1-backed question service with Zod validation, owner checks, 
 
 ### Out of Scope (later phases)
 
-- `/mcqs` create/edit/list UI (Phase 5)
+- Create and edit **forms** (Phase 5 only navigates to placeholder routes)
 - Persisting attempt history or a student quiz-taking page
 - Sharing controls beyond “any signed-in teacher can read the bank”
 - Tags, subjects, images, or rich text
@@ -114,7 +114,20 @@ Zod runs in the action **before** the service is called. Ownership is still enfo
 
 ### User Interface Requirements
 
-Phase 4 has no UI change. `/mcqs` remains the auth-gated stub until Phase 5. Do not import `mcq-service` into `'use client'` files; the UI must call these Server Actions and branch on `ok`.
+`/mcqs` is the signed-in dashboard. `src/app/mcqs/layout.tsx` still redirects missing sessions to `/login` on the server (no client auth flash). The list is a client component that calls Server Actions and branches on `ok`. Do not import `mcq-service` into `'use client'` files.
+
+| Surface | Behavior |
+|---------|----------|
+| Heading | “Question bank” plus Log out (unchanged auth chrome) |
+| Create question | Link to `/mcqs/new` |
+| Table | Stem, choice count, Edit / Preview / Delete |
+| Empty | “No questions yet” |
+| Loading | “Loading questions…” |
+| Error | Action `error` string |
+| Unauthorized list | `router.push("/login")` |
+| Preview | Dialog with stem, ordered choices, Correct badge |
+| Delete | Confirm dialog; Cancel does not call the action; Confirm calls `deleteQuestionAction`; forbidden keeps the row and shows the error |
+| Edit | Link to `/mcqs/[id]/edit` (placeholder page this phase) |
 
 ---
 
@@ -257,15 +270,51 @@ Phase 3 gate is met.
 3. `npm run lint` — exit 0
 4. `src/app/mcqs/page.tsx` unchanged
 
-Phase 4 gate is met. Phase 5 was not started.
+Phase 4 gate is met.
 
-### Phase 5: `/mcqs` UI - PLANNED
+### Phase 5: Dashboard MCQ list - COMPLETED
 
-**Objective**: Signed-in teachers can list, create, edit, and delete questions in the browser by calling Phase 4 Server Actions and branching on `ok`.
+**Objective**: Signed-in teachers see the shared question bank as a table, with create navigation, preview, edit navigation, and confirmed delete. Loading, empty, and error states are visible. Layout session gating is unchanged.
+
+**Tests first (expect red)**:
+1. `src/components/mcq-dashboard.test.tsx` — loading, empty + `/mcqs/new`, list error, unauthorized → `/login`, table + Edit/Preview/Delete, preview dialog, delete cancel, delete confirm removes row, forbidden keeps row
+2. `src/app/mcqs/page.test.tsx` — heading, logout, create link, no question form
+3. Existing `layout.test.ts` still proves the server session redirect (auth hydration)
+
+**Then implement**:
+1. `src/components/mcq-dashboard.tsx` — client; `listQuestionsAction` / `deleteQuestionAction` only
+2. Replace the `/mcqs` stub with dashboard chrome + `McqDashboard`
+3. Placeholder `/mcqs/new` and `/mcqs/[id]/edit` so navigation does not 404
+4. Do not change `src/app/mcqs/layout.tsx`
+
+**Phase gate**: `npm test` green. `npm run lint` exit 0. No Phase 6 verify/browser pass. No create/edit forms.
+
+**Deliverables**:
+- `src/components/mcq-dashboard.tsx` + `src/components/mcq-dashboard.test.tsx`
+- Updated `/mcqs` page
+- Placeholder create/edit routes
+
+**As-built implementation**:
+
+| Item | Location / value |
+|------|------------------|
+| Auth | `layout.tsx` still `getSession` + `redirect("/login")`. Dashboard does not add a competing client gate except action `unauthorized` → `/login`. |
+| List | `useEffect` loads once via `listQuestionsAction`. `useRouter` is not an effect dependency (avoids refetch wiping a successful delete). |
+| Components | shadcn `card`, `table`, `button`, `dialog`, `badge` |
+| Delete | Capture target id before `await`; Cancel does not call the action |
+| Forms | `/mcqs/new` and `/mcqs/[id]/edit` are placeholders only |
+
+**Verification (2026-09-03, this session)**:
+1. New tests failed first (missing `./mcq-dashboard`; no Create question link)
+2. `npm test` — **20 files, 127 passed** (exit 0)
+3. `npm run lint` — exit 0
+4. `src/app/mcqs/layout.tsx` unchanged
+
+Phase 5 gate is met. Phase 6 was not started.
 
 ### Phase 6: Verify - PLANNED
 
-**Objective**: Lint, build, and a browser path through CRUD.
+**Objective**: Lint, build, and a browser path through the dashboard (and later create/edit forms if those ship first).
 
 ---
 
@@ -280,6 +329,9 @@ Phase 4 gate is met. Phase 5 was not started.
 | `src/lib/mcq-schemas.ts` | Zod `createQuestionSchema` / `updateQuestionSchema` / `questionAttemptSchema` / `questionIdSchema` |
 | `src/lib/services/mcq-service.ts` | `createQuestion`, `getQuestion`, `listQuestions`, `updateQuestion`, `deleteQuestion`, `checkQuestionAttempt` |
 | `src/app/mcqs/actions.ts` | Session-gated Server Actions; Zod then service; `{ ok, data \| code, error }` |
+| `src/components/mcq-dashboard.tsx` | List table, preview dialog, delete confirm, create/edit links |
+| `src/app/mcqs/page.tsx` | Question-bank chrome + `McqDashboard` + logout |
+| `src/app/mcqs/layout.tsx` | Session gate (unchanged) |
 
 ### Service names (shipped)
 
@@ -322,7 +374,7 @@ Choice `position` is the 0-based index of the submitted array.
 - Ask before new dependencies. Zod is already installed.
 - Never apply this migration `--remote` unless the user asks.
 - Do not add JWT. `/mcqs` still uses `qm_session`.
-- Do not start Phase 5 until asked. The UI must call Server Actions, not `mcq-service`, and must branch on `ok`.
+- Do not start Phase 6 until asked.
 - Do not add `/api/questions` unless the user asks; Server Actions are the MCQ boundary.
 
 ---
@@ -337,13 +389,15 @@ Choice `position` is the 0-based index of the submitted array.
 - [x] Choices return in `position` order
 - [x] `isCorrect` is boolean in the service; D1 stores 0/1
 - [x] Deleting a question does not issue `DELETE FROM choices` (CASCADE)
-- [x] `npm test` green — **19 files, 118 passed** (2026-09-03)
+- [x] `npm test` green — **20 files, 127 passed** (2026-09-03)
 - [x] `npm run lint` exit 0
 - [x] Session-gated Server Actions call the service (Phase 3)
 - [x] Attempt correctness is decided from D1 `is_correct`, not a client flag
 - [x] Actions return `{ ok: true, data }` or `{ ok: false, code, error }` (Phase 4)
 - [x] Actions validate with Zod before the service and do not run SQL
-- [ ] `/mcqs` UI (Phase 5)
+- [x] `/mcqs` dashboard lists questions with loading/empty/error, preview, delete confirm, create/edit navigation (Phase 5)
+- [ ] Create/edit forms
+- [ ] Phase 6 verify (build + browser)
 
 ---
 
@@ -354,7 +408,8 @@ Choice `position` is the 0-based index of the submitted array.
 | Phase 2 tests prove data-access rules | All new tests fail then pass | 31 Phase 2 tests passed after implementation |
 | Phase 3 tests prove actions + attempts | Fail then pass | New tests failed (missing exports/module), then 111/111 |
 | Phase 4 tests prove action results | Fail then pass | 13 new tests failed (throws / raw payloads), then 118/118 |
-| Suite stays green | `npm test` exit 0 | 118/118 passed |
+| Phase 5 dashboard list | Fail then pass | Missing module / create link, then 127/127 |
+| Suite stays green | `npm test` exit 0 | 127/127 passed |
 | Lint clean | `npm run lint` exit 0 | exit 0 |
 
 ---
@@ -422,25 +477,26 @@ Choice `position` is the 0-based index of the submitted array.
 
 ## Notes for AI Agents
 
-1. Phases 1–4 are **done**. Do not rewrite the service, migration, or Server Actions unless a test fails.
-2. Next phase is `/mcqs` UI. Call `*Action` functions from `src/app/mcqs/actions.ts` and branch on `result.ok`. Do not import `mcq-service` into `'use client'` files.
+1. Phases 1–5 are **done**. Do not rewrite the service, migration, Server Actions, or dashboard unless a test fails.
+2. Next phase is Verify (or create/edit forms if asked). Keep calling `*Action` from `src/app/mcqs/actions.ts` and branch on `result.ok`. Do not import `mcq-service` into `'use client'` files.
 3. Get the actor from `getSession` + `qm_session`. Pass `session.userId` as `ownerId`. Never trust `ownerId` from the client body.
 4. Grade attempts with `checkQuestionAttemptAction`. Do not trust a client `isCorrect`.
 5. TDD with existing Vitest. Do not reinstall the harness.
 6. Never apply D1 migrations remotely and never deploy unless asked.
 7. Server Actions must not call `db.prepare` or write SQL.
+8. Do not change `src/app/mcqs/layout.tsx` session gating unless fixing a real auth bug.
 
 ---
 
 ## Current Status
 
 **Last Updated**: 2026-09-03
-**Current Phase**: Phase 4 complete. Phase 5 `/mcqs` UI is **not** started.
-**Status**: Phase 4 COMPLETED — Server Actions validate with Zod, return `{ ok, data }` or `{ ok: false, code, error }`, enforce session + ownership via the service, score attempts from D1, and never run SQL.
+**Current Phase**: Phase 5 complete. Phase 6 Verify is **not** started.
+**Status**: Phase 5 COMPLETED — `/mcqs` dashboard table, create navigation, Edit/Preview/Delete, delete confirmation, loading/empty/error. Layout session gate unchanged. Create/edit pages are placeholders only.
 **Git**: Branch `feature/register-login-logout`.
 **Verification (2026-09-03, this session)**:
-- TDD: new tests failed first (missing `questionIdSchema`; actions threw or returned raw questions)
-- `npm test` — **19 files / 118 passed**
+- TDD: new tests failed first (missing `McqDashboard`; no Create question link)
+- `src/app/mcqs/layout.test.ts` still green (server redirect to `/login`)
+- `npm test` — **20 files / 127 passed**
 - `npm run lint` — exit 0
-- `/mcqs` page still a stub; no Phase 5 UI
-**Next Steps**: Phase 5 `/mcqs` UI when asked. Wire the page to the Server Actions and handle `code` on failure.
+**Next Steps**: Phase 6 verify when asked, or create/edit forms. Do not treat placeholder `/mcqs/new` and `/mcqs/[id]/edit` as finished CRUD.
