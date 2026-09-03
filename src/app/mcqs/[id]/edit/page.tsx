@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { McqQuestionForm } from "@/components/mcq-question-form";
 
 export default async function EditQuestionPage({
 	params,
@@ -11,14 +9,14 @@ export default async function EditQuestionPage({
 
 	return (
 		<div className="flex min-h-svh w-full justify-center p-6 md:p-10">
-			<main className="flex w-full max-w-lg flex-col gap-4">
-				<h1 className="text-2xl font-semibold tracking-tight">Edit question</h1>
-				<p className="text-sm text-muted-foreground">
-					Editing {id} ships in a later phase.
-				</p>
-				<Link href="/mcqs" className={cn(buttonVariants({ variant: "outline" }))}>
-					Back to question bank
-				</Link>
+			<main className="flex w-full max-w-lg flex-col gap-6">
+				<div className="flex flex-col gap-2">
+					<h1 className="text-2xl font-semibold tracking-tight">Edit question</h1>
+					<p className="text-sm text-muted-foreground">
+						Update the prompt and choices. Only the owner can save.
+					</p>
+				</div>
+				<McqQuestionForm mode="edit" questionId={id} />
 			</main>
 		</div>
 	);
