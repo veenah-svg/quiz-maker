@@ -19,16 +19,14 @@
 		"enabled": true
 	},
 	/**
-	 * Binding DB, database quizmaker. database_id may still be a local
-	 * placeholder if a real remote ID was never committed. If production
-	 * already works, replace this with `npx wrangler d1 list` output — do
-	 * not create a second database. Never apply migrations with --remote.
+	 * Binding DB, database quizmaker. Real remote ID from `wrangler d1 create`.
+	 * Apply new migrations locally with --local. Remote apply only when deploying.
 	 */
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "quizmaker",
-			"database_id": "00000000-0000-0000-0000-000000000001",
+			"database_id": "e8b013df-10d1-4860-acf2-503f073d3878",
 			"migrations_dir": "migrations"
 		}
 	]
