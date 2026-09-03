@@ -397,9 +397,9 @@ Phase 5 additionally requires `npm run lint`, `npm run build`, and a browser pas
 **Verification (2026-09-03, Phase 1 only — local D1, no `--remote`)**:
 
 1. `npm test -- migrations/users-schema.test.ts` — **1 file, 6 passed** (exit 0)
-2. `npx wrangler d1 migrations apply quizmaker --local` — `0001_create_users.sql` **applied** (`✅`). Wrangler also applied pre-existing `0002_create_sessions.sql` in the same local run because that file was already in `migrations/` from earlier work; **no Phase 2 code was written in this session**.
-3. `npx wrangler d1 execute quizmaker --local --command "PRAGMA table_info(users);"` — columns match the Database Schema: `id` TEXT PK, `first_name`, `last_name`, `username`, `email`, `password_hash`, `created_at`, `updated_at`
-4. Full suite after apply: `npm test` — **15 files, 68 passed** (exit 0)
+2. `npx wrangler d1 migrations apply quizmaker --local` — **No migrations to apply** (local schema already includes `0001_create_users.sql` from a prior apply). Remote was not touched (`--remote` not used).
+3. `npx wrangler d1 execute quizmaker --local --command "PRAGMA table_info(users);"` — columns match the Database Schema: `id` TEXT PK (`lower(hex(randomblob(16)))` default), `first_name`, `last_name`, `username`, `email`, `password_hash`, `created_at`, `updated_at`
+4. Full suite after verify: `npm test` — **18 files, 99 passed** (exit 0). Later phases add tests; Phase 1 gate is only the schema suite plus local D1 apply.
 
 Phase 1 gate is met. Phase 2 was not started in this session.
 
@@ -965,12 +965,12 @@ This PRD is **complete**. Use it as context, not as a build plan.
 ## Current Status
 
 **Last Updated**: 2026-09-03
-**Current Phase**: Phase 1 complete (verified this session). Phases 2–5 remain shipped from prior work and were **not** re-implemented.
-**Status**: Phase 1 COMPLETED — Vitest harness, D1 binding `DB` / `quizmaker`, `migrations/0001_create_users.sql`, schema tests green, local apply only. Register / login / logout plus HttpOnly `qm_session` is already the as-built contract; this session did not start Phase 2.
-**Git**: Branch `feature/register-login-logout`. Phase 1 implementation landed in `fda61f1`.
-**Verification (2026-09-03)**:
-- Phase 1 tests: `migrations/users-schema.test.ts` — 6/6 passed
-- Local D1: `npx wrangler d1 migrations apply quizmaker --local` — `0001_create_users.sql` ✅ (also applied already-present `0002_create_sessions.sql`; not remote)
-- Local `users` table: `PRAGMA table_info(users)` matches the PRD schema
-- Full suite: `npm test` — 15 files / **68 passed**
+**Current Phase**: Phase 1 complete (re-verified this session). Phases 2–5 remain shipped from prior work and were **not** re-implemented.
+**Status**: Phase 1 COMPLETED — Vitest harness, D1 binding `DB` / `quizmaker`, `migrations/0001_create_users.sql`, schema tests green, local D1 schema confirmed. Register / login / logout plus HttpOnly `qm_session` is already the as-built contract; this session did not start Phase 2.
+**Git**: Branch `feature/register-login-logout`. Phase 1 implementation landed in `fda61f1`; this session records re-verification only.
+**Verification (2026-09-03, this session)**:
+- Phase 1 tests: `migrations/users-schema.test.ts` — **6/6 passed** (exit 0)
+- Local D1: `npx wrangler d1 migrations apply quizmaker --local` — **No migrations to apply** (local schema current; not remote)
+- Local `users` table: `PRAGMA table_info(users)` — 8 columns match the PRD Database Schema
+- Full suite: `npm test` — **18 files / 99 passed** (exit 0)
 **Next Steps**: Do not start Phase 2 of this PRD (it is already shipped). Next product work is a new MCQ CRUD PRD on `/mcqs`.
