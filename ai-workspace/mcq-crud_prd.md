@@ -120,17 +120,17 @@ Zod runs in the action **before** the service is called. Ownership is still enfo
 |---------|----------|
 | Heading | “Question bank” plus Log out (unchanged auth chrome) |
 | Create question | Link to `/mcqs/new` |
-| Table | Stem, choice count, Edit / Preview / Delete |
+| Table | Stem, choice count, Edit / Preview / Delete (unique `aria-label`s include the stem) |
 | Empty | “No questions yet” |
-| Loading | “Loading questions…” |
+| Loading | “Loading questions…” (`role="status"`) |
 | Error | Action `error` string |
 | Unauthorized list | `router.push("/login")` |
 | Preview | Link to `/mcqs/[id]/preview` |
-| Delete | Confirm dialog; Cancel does not call the action; Confirm calls `deleteQuestionAction`; forbidden keeps the row and shows the error |
+| Delete | Confirm dialog names the stem; Cancel does not call the action; Confirm calls `deleteQuestionAction`; forbidden keeps the row and shows the error |
 | Edit | Link to `/mcqs/[id]/edit` |
 | Create form (`/mcqs/new`) | Stem labeled “Question” (schema has no description column), 2–6 choices, exactly one correct via radios, Add/Remove, Save/Cancel |
 | Edit form (`/mcqs/[id]/edit`) | Loads via `getQuestionAction`, saves via `updateQuestionAction`; unauthorized → `/login`; server errors stay on the form |
-| Attempt (`/mcqs/[id]/preview`) | Loads stem and choice labels only (no Correct badge). Check answer calls `checkQuestionAttemptAction({ questionId, choiceId })`. Feedback is the server `isCorrect`. Try again clears the recorded result. Back returns to `/mcqs`. Unauthorized → `/login`. |
+| Attempt (`/mcqs/[id]/preview`) | Loads stem and choice labels only (no Correct badge). Choices are a fieldset. Check answer calls `checkQuestionAttemptAction({ questionId, choiceId })`. Feedback is the server `isCorrect`. Try again clears the recorded result. Back returns to `/mcqs`. Unauthorized → `/login`. |
 
 ---
 
@@ -303,7 +303,7 @@ Phase 4 gate is met.
 |------|------------------|
 | Auth | `layout.tsx` still `getSession` + `redirect("/login")`. Dashboard does not add a competing client gate except action `unauthorized` → `/login`. |
 | List | `useEffect` loads once via `listQuestionsAction`. `useRouter` is not an effect dependency (avoids refetch wiping a successful delete). |
-| Components | shadcn `card`, `table`, `button`, `dialog`, `badge` |
+| Components | shadcn `card`, `table`, `button`, `dialog` (preview badge dialog removed in Phase 7) |
 | Delete | Capture target id before `await`; Cancel does not call the action |
 | Forms | `/mcqs/new` and `/mcqs/[id]/edit` are placeholders only |
 
@@ -401,11 +401,41 @@ Phase 6 gate is met. Preview/attempt UI shipped in Phase 7.
 4. `src/app/mcqs/layout.tsx` unchanged
 5. No new migration and no `--remote`
 
-Phase 7 gate is met. Phase 8 was not started.
+Phase 7 gate is met. Quality/docs/verify shipped in Phase 8.
 
-### Phase 8: Verify - PLANNED
+### Phase 8: Quality, Documentation & Final Verification - COMPLETED
 
-**Objective**: Lint, build, and a browser path through the dashboard, create/edit forms, and preview/attempt.
+**Objective**: Review the MCQ feature against this PRD, run the full suite plus lint and production build, walk the signed-in user flow, fix accessibility and documentation gaps, and record as-built status.
+
+**Checks**:
+1. PRD vs code: Server Actions, no `/api/questions`, layout session gate, Zod-then-service, no client `isCorrect` for grading, no attempts table
+2. `npm test`, `npm run lint`, `npm run build`
+3. HTTP path through local `next dev` (Cloudflare bindings via `initOpenNextCloudflareForDev`): unauthenticated `/mcqs*` → `/login`; register; signed-in dashboard/create/edit/preview pages
+4. Accessibility: unique row action names, delete dialog names the stem, attempt radios in a fieldset, loading `role="status"`
+
+**Phase gate**: Tests green, lint exit 0, build compiles, unauthenticated MCQ routes redirect, signed-in pages render.
+
+**As-built verification (2026-09-04, this session)**:
+
+| Check | Result |
+|-------|--------|
+| `npm test` | **25 files, 151 passed** (exit 0) |
+| `npm run lint` | exit 0 |
+| `npm run build` | Compiled; TS ok. Routes: `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, `/mcqs/[id]/preview` (dynamic) |
+| Unauthenticated `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, `/mcqs/[id]/preview` | HTTP 307 → `/login` |
+| `POST /api/register` | 201 + `qm_session` |
+| Signed-in `/mcqs` | 200 — Question bank, Create question, Log out |
+| Signed-in `/mcqs/new` | 200 — Create question, Save question, Cancel |
+| Signed-in `/mcqs/missing-id/preview` | 200 — Preview question (client then shows not-found) |
+| Signed-in `/mcqs/missing-id/edit` | 200 — Edit question (client then shows not-found) |
+| `POST /api/login` | 200 + `qm_session` |
+| Layout | `src/app/mcqs/layout.tsx` still `getSession` + `redirect("/login")` |
+| Actions | No `db.prepare` / SQL; no `'use client'` import of `mcq-service` |
+| Browser MCP | Not available; HTTP + Vitest used instead of a headed browser |
+
+No new migration. No `--remote`. No deploy.
+
+Phase 8 gate is met. The MCQ CRUD feature is complete.
 
 ---
 
@@ -420,7 +450,7 @@ Phase 7 gate is met. Phase 8 was not started.
 | `src/lib/mcq-schemas.ts` | Zod `createQuestionSchema` / `updateQuestionSchema` / `questionAttemptSchema` / `questionIdSchema` |
 | `src/lib/services/mcq-service.ts` | `createQuestion`, `getQuestion`, `listQuestions`, `updateQuestion`, `deleteQuestion`, `checkQuestionAttempt` |
 | `src/app/mcqs/actions.ts` | Session-gated Server Actions; Zod then service; `{ ok, data \| code, error }` |
-| `src/components/mcq-dashboard.tsx` | List table, delete confirm, create/edit/preview links |
+| `src/components/mcq-dashboard.tsx` | List table, delete confirm, create/edit/preview links with unique action labels |
 | `src/components/mcq-question-form.tsx` | Create/edit form: stem, 2–6 choices, one correct, Save/Cancel |
 | `src/components/mcq-attempt.tsx` | Preview/attempt: choose a choice, server-scored feedback, Try again |
 | `src/app/mcqs/new/page.tsx` | Create question page |
@@ -470,7 +500,6 @@ Choice `position` is the 0-based index of the submitted array.
 - Ask before new dependencies. Zod is already installed.
 - Never apply this migration `--remote` unless the user asks.
 - Do not add JWT. `/mcqs` still uses `qm_session`.
-- Do not start Phase 8 until asked.
 - Do not add `/api/questions` unless the user asks; Server Actions are the MCQ boundary.
 
 ---
@@ -494,7 +523,7 @@ Choice `position` is the 0-based index of the submitted array.
 - [x] `/mcqs` dashboard lists questions with loading/empty/error, preview, delete confirm, create/edit navigation (Phase 5)
 - [x] Create/edit forms: 2–6 choices, exactly one correct, Save/Cancel, action errors (Phase 6)
 - [x] Preview/attempt: server-scored Correct/Incorrect, Try again, Back, loading/error (Phase 7)
-- [ ] Phase 8 verify (build + browser)
+- [x] Phase 8 verify: `npm test`, `npm run lint`, `npm run build`, signed-in HTTP flow, PRD matches as-built
 
 ---
 
@@ -508,8 +537,10 @@ Choice `position` is the 0-based index of the submitted array.
 | Phase 5 dashboard list | Fail then pass | Missing module / create link, then 127/127 |
 | Phase 6 create/edit forms | Fail then pass | Missing `./mcq-question-form`, then 140/140 |
 | Phase 7 preview/attempt | Fail then pass | Missing `./mcq-attempt` / preview page; Preview still a button; then 151/151 |
+| Phase 8 quality + verify | Suite, lint, build, HTTP flow | 151/151; lint 0; Next.js compile; unauth 307 /login; signed-in pages 200 |
 | Suite stays green | `npm test` exit 0 | 151/151 passed |
 | Lint clean | `npm run lint` exit 0 | exit 0 |
+| Production build | `npm run build` exit 0 | Compiled successfully |
 
 ---
 
@@ -576,8 +607,8 @@ Choice `position` is the 0-based index of the submitted array.
 
 ## Notes for AI Agents
 
-1. Phases 1–7 are **done**. Do not rewrite the service, migration, Server Actions, dashboard, create/edit forms, or preview/attempt unless a test fails.
-2. Next phase is Verify (Phase 8). Keep calling `*Action` from `src/app/mcqs/actions.ts` and branch on `result.ok`. Do not import `mcq-service` into `'use client'` files.
+1. Phases 1–8 are **done**. The MCQ feature is shipped. Do not rewrite the service, migration, Server Actions, dashboard, create/edit forms, or preview/attempt unless a test fails.
+2. Keep calling `*Action` from `src/app/mcqs/actions.ts` and branch on `result.ok`. Do not import `mcq-service` into `'use client'` files.
 3. Get the actor from `getSession` + `qm_session`. Pass `session.userId` as `ownerId`. Never trust `ownerId` from the client body.
 4. Grade attempts with `checkQuestionAttemptAction`. Do not trust a client `isCorrect`.
 5. TDD with existing Vitest. Do not reinstall the harness.
@@ -590,12 +621,12 @@ Choice `position` is the 0-based index of the submitted array.
 ## Current Status
 
 **Last Updated**: 2026-09-04
-**Current Phase**: Phase 7 complete. Phase 8 Verify is **not** started.
-**Status**: Phase 7 COMPLETED — `/mcqs/[id]/preview` loads stem and choices, records an attempt via `checkQuestionAttemptAction`, shows server Correct/Incorrect, Try again, Back. Loaded `isCorrect` is not used for feedback. No attempts table. Layout session gate unchanged.
+**Current Phase**: Phase 8 complete. MCQ CRUD is **shipped**.
+**Status**: Phase 8 COMPLETED — tests, lint, production build, and signed-in HTTP flow. Accessibility: unique Edit/Preview/Delete names, delete dialog includes the stem, attempt choices in a fieldset, loading `role="status"`. PRD matches as-built. Layout session gate unchanged.
 **Git**: Branch `feature/register-login-logout`.
 **Verification (2026-09-04, this session)**:
-- TDD: new tests failed first (missing `./mcq-attempt` and preview page; Preview still a button)
-- `src/app/mcqs/layout.test.ts` still green (server redirect to `/login`)
 - `npm test` — **25 files / 151 passed**
 - `npm run lint` — exit 0
-**Next Steps**: Phase 8 verify when asked (build + browser). Do not start it until asked.
+- `npm run build` — compiled; `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, `/mcqs/[id]/preview` present
+- HTTP: unauthenticated MCQ routes 307 → `/login`; register 201; signed-in dashboard/create/edit/preview 200
+**Next Steps**: None for this PRD. Do not deploy or apply D1 `--remote` unless asked.

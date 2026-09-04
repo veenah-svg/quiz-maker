@@ -14,7 +14,7 @@ browser has no cookie and must log in again.
 
 The as-built auth contract is `ai-workspace/register-login-logout_prd.md`. Do not
 re-implement that feature. MCQ persistence is in `src/lib/services/mcq-service.ts`
-(`ai-workspace/mcq-crud_prd.md` Phases 1–7). Session-gated Server Actions live in
+(`ai-workspace/mcq-crud_prd.md` Phases 1–8, shipped). Session-gated Server Actions live in
 `src/app/mcqs/actions.ts`. `/mcqs` is a session-gated dashboard list; create, edit, and
 preview/attempt live at `/mcqs/new`, `/mcqs/[id]/edit`, and `/mcqs/[id]/preview`.
 Attempt correctness comes from `checkQuestionAttemptAction` (D1 `is_correct`), never

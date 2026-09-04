@@ -199,7 +199,11 @@ export function McqQuestionForm({
 	}
 
 	if (loadStatus === "loading") {
-		return <p className="text-sm text-muted-foreground">Loading question…</p>;
+		return (
+			<p className="text-sm text-muted-foreground" role="status">
+				Loading question…
+			</p>
+		);
 	}
 
 	if (loadStatus === "error") {

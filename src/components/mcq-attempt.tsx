@@ -20,6 +20,8 @@ import {
 	FieldError,
 	FieldGroup,
 	FieldLabel,
+	FieldLegend,
+	FieldSet,
 } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
@@ -135,7 +137,11 @@ export function McqAttempt({ questionId }: { questionId: string }) {
 	}
 
 	if (loadStatus === "loading") {
-		return <p className="text-sm text-muted-foreground">Loading question…</p>;
+		return (
+			<p className="text-sm text-muted-foreground" role="status">
+				Loading question…
+			</p>
+		);
 	}
 
 	if (loadStatus === "error" || !prompt) {
@@ -164,30 +170,33 @@ export function McqAttempt({ questionId }: { questionId: string }) {
 					<FieldGroup>
 						<p className="font-medium">{prompt.stem}</p>
 
-						<Field>
-							{prompt.choices.map((choice) => {
-								const radioId = `${formId}-${choice.id}`;
+						<FieldSet>
+							<FieldLegend variant="label">Choices</FieldLegend>
+							<Field>
+								{prompt.choices.map((choice) => {
+									const radioId = `${formId}-${choice.id}`;
 
-								return (
-									<FieldLabel
-										key={choice.id}
-										htmlFor={radioId}
-										className="flex items-center gap-2 font-normal"
-									>
-										<input
-											id={radioId}
-											type="radio"
-											name={`${formId}-choice`}
-											value={choice.id}
-											checked={selectedChoiceId === choice.id}
-											disabled={attempt !== null}
-											onChange={() => setSelectedChoiceId(choice.id)}
-										/>
-										{choice.label}
-									</FieldLabel>
-								);
-							})}
-						</Field>
+									return (
+										<FieldLabel
+											key={choice.id}
+											htmlFor={radioId}
+											className="flex items-center gap-2 font-normal"
+										>
+											<input
+												id={radioId}
+												type="radio"
+												name={`${formId}-choice`}
+												value={choice.id}
+												checked={selectedChoiceId === choice.id}
+												disabled={attempt !== null}
+												onChange={() => setSelectedChoiceId(choice.id)}
+											/>
+											{choice.label}
+										</FieldLabel>
+									);
+								})}
+							</Field>
+						</FieldSet>
 
 						{attempt ? (
 							<p role="status" className="text-sm font-medium">

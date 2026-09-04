@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { McqDashboard } from "./mcq-dashboard";
@@ -104,15 +104,15 @@ describe("McqDashboard", () => {
 			await screen.findByRole("cell", { name: question.stem }),
 		).toBeInTheDocument();
 		expect(screen.getByRole("columnheader", { name: /question/i })).toBeInTheDocument();
-		expect(screen.getByRole("link", { name: /edit/i })).toHaveAttribute(
-			"href",
-			"/mcqs/q1/edit",
-		);
-		expect(screen.getByRole("link", { name: /preview/i })).toHaveAttribute(
-			"href",
-			"/mcqs/q1/preview",
-		);
-		expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: `Edit: ${question.stem}` }),
+		).toHaveAttribute("href", "/mcqs/q1/edit");
+		expect(
+			screen.getByRole("link", { name: `Preview: ${question.stem}` }),
+		).toHaveAttribute("href", "/mcqs/q1/preview");
+		expect(
+			screen.getByRole("button", { name: `Delete: ${question.stem}` }),
+		).toBeInTheDocument();
 		expect(
 			screen.getByRole("link", { name: /create question/i }),
 		).toHaveAttribute("href", "/mcqs/new");
@@ -123,10 +123,9 @@ describe("McqDashboard", () => {
 
 		render(<McqDashboard />);
 
-		expect(await screen.findByRole("link", { name: /preview/i })).toHaveAttribute(
-			"href",
-			"/mcqs/q1/preview",
-		);
+		expect(
+			await screen.findByRole("link", { name: `Preview: ${question.stem}` }),
+		).toHaveAttribute("href", "/mcqs/q1/preview");
 		expect(deleteQuestionAction).not.toHaveBeenCalled();
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
@@ -136,10 +135,17 @@ describe("McqDashboard", () => {
 		listQuestionsAction.mockResolvedValue({ ok: true, data: [question] });
 
 		render(<McqDashboard />);
-		await user.click(await screen.findByRole("button", { name: /delete/i }));
+		await user.click(
+			await screen.findByRole("button", { name: `Delete: ${question.stem}` }),
+		);
 
 		expect(
 			await screen.findByRole("heading", { name: /delete question/i }),
+		).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("dialog")).getByText(question.stem, {
+				exact: false,
+			}),
 		).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /cancel/i }));
 
@@ -152,7 +158,9 @@ describe("McqDashboard", () => {
 		listQuestionsAction.mockResolvedValue({ ok: true, data: [question] });
 
 		render(<McqDashboard />);
-		await user.click(await screen.findByRole("button", { name: /delete/i }));
+		await user.click(
+			await screen.findByRole("button", { name: `Delete: ${question.stem}` }),
+		);
 		await user.click(
 			await screen.findByRole("button", { name: /confirm delete/i }),
 		);
@@ -175,7 +183,9 @@ describe("McqDashboard", () => {
 		});
 
 		render(<McqDashboard />);
-		await user.click(await screen.findByRole("button", { name: /delete/i }));
+		await user.click(
+			await screen.findByRole("button", { name: `Delete: ${question.stem}` }),
+		);
 		await user.click(
 			await screen.findByRole("button", { name: /confirm delete/i }),
 		);

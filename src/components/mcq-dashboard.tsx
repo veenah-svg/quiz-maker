@@ -127,7 +127,9 @@ export function McqDashboard() {
 			</CardHeader>
 			<CardContent>
 				{status === "loading" ? (
-					<p className="text-sm text-muted-foreground">Loading questions…</p>
+					<p className="text-sm text-muted-foreground" role="status">
+						Loading questions…
+					</p>
 				) : null}
 
 				{status === "error" && error ? (
@@ -162,6 +164,7 @@ export function McqDashboard() {
 										<div className="flex justify-end gap-1">
 											<Link
 												href={`/mcqs/${question.id}/edit`}
+												aria-label={`Edit: ${question.stem}`}
 												className={cn(
 													buttonVariants({ variant: "ghost", size: "sm" }),
 												)}
@@ -170,6 +173,7 @@ export function McqDashboard() {
 											</Link>
 											<Link
 												href={`/mcqs/${question.id}/preview`}
+												aria-label={`Preview: ${question.stem}`}
 												className={cn(
 													buttonVariants({ variant: "ghost", size: "sm" }),
 												)}
@@ -180,6 +184,7 @@ export function McqDashboard() {
 												type="button"
 												variant="ghost"
 												size="sm"
+												aria-label={`Delete: ${question.stem}`}
 												onClick={() => {
 													setDeleteError(null);
 													setPendingDelete(question);
@@ -209,8 +214,9 @@ export function McqDashboard() {
 					<DialogHeader>
 						<DialogTitle>Delete question</DialogTitle>
 						<DialogDescription>
-							This cannot be undone. The question and its choices will be
-							removed.
+							{pendingDelete
+								? `This cannot be undone. “${pendingDelete.stem}” and its choices will be removed.`
+								: "This cannot be undone. The question and its choices will be removed."}
 						</DialogDescription>
 					</DialogHeader>
 					{deleteError ? (
