@@ -14,10 +14,12 @@ browser has no cookie and must log in again.
 
 The as-built auth contract is `ai-workspace/register-login-logout_prd.md`. Do not
 re-implement that feature. MCQ persistence is in `src/lib/services/mcq-service.ts`
-(`ai-workspace/mcq-crud_prd.md` Phases 1–6). Session-gated Server Actions live in
-`src/app/mcqs/actions.ts`. `/mcqs` is a session-gated dashboard list; create and edit
-forms live at `/mcqs/new` and `/mcqs/[id]/edit`. Server Actions validate with Zod and
-return `{ ok, data }` or `{ ok: false, code, error }`; they do not run SQL.
+(`ai-workspace/mcq-crud_prd.md` Phases 1–7). Session-gated Server Actions live in
+`src/app/mcqs/actions.ts`. `/mcqs` is a session-gated dashboard list; create, edit, and
+preview/attempt live at `/mcqs/new`, `/mcqs/[id]/edit`, and `/mcqs/[id]/preview`.
+Attempt correctness comes from `checkQuestionAttemptAction` (D1 `is_correct`), never
+the client. Server Actions validate with Zod and return `{ ok, data }` or
+`{ ok: false, code, error }`; they do not run SQL.
 
 ## Stack
 
@@ -41,7 +43,7 @@ without adding it first and telling the user.
 ```
 src/app/            Routes, layouts, and global styles (App Router)
 src/app/api/        HTTP route handlers (register, login, logout)
-src/components/     Feature UI (login-form, signup-form, logout-button, mcq-dashboard, mcq-question-form)
+src/components/     Feature UI (login-form, signup-form, logout-button, mcq-dashboard, mcq-question-form, mcq-attempt)
 src/components/ui/  shadcn/ui components (generated; avoid hand-editing)
 src/lib/            Shared utilities (`password.ts`, `auth-schemas.ts`, `mcq-schemas.ts`, `http.ts`, `session-cookie.ts`)
 src/lib/services/   Domain logic (`user-service.ts`, `session-service.ts`, `mcq-service.ts`) — server-only, no `'use client'`

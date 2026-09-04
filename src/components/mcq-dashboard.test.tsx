@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { McqDashboard } from "./mcq-dashboard";
@@ -108,26 +108,27 @@ describe("McqDashboard", () => {
 			"href",
 			"/mcqs/q1/edit",
 		);
-		expect(screen.getByRole("button", { name: /preview/i })).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: /preview/i })).toHaveAttribute(
+			"href",
+			"/mcqs/q1/preview",
+		);
 		expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
 		expect(
 			screen.getByRole("link", { name: /create question/i }),
 		).toHaveAttribute("href", "/mcqs/new");
 	});
 
-	it("previews the stem and choices without calling delete", async () => {
-		const user = userEvent.setup();
+	it("links preview to the attempt page without calling delete", async () => {
 		listQuestionsAction.mockResolvedValue({ ok: true, data: [question] });
 
 		render(<McqDashboard />);
-		await screen.findByRole("button", { name: /preview/i });
-		await user.click(screen.getByRole("button", { name: /preview/i }));
 
-		const dialog = await screen.findByRole("dialog");
-		expect(within(dialog).getByText(question.stem)).toBeInTheDocument();
-		expect(within(dialog).getByText("Paris")).toBeInTheDocument();
-		expect(within(dialog).getByText("London")).toBeInTheDocument();
+		expect(await screen.findByRole("link", { name: /preview/i })).toHaveAttribute(
+			"href",
+			"/mcqs/q1/preview",
+		);
 		expect(deleteQuestionAction).not.toHaveBeenCalled();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
 
 	it("asks for confirmation before deleting and can be cancelled", async () => {

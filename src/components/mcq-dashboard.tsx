@@ -7,7 +7,6 @@ import {
 	deleteQuestionAction,
 	listQuestionsAction,
 } from "@/app/mcqs/actions";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Card,
@@ -47,7 +46,6 @@ export function McqDashboard() {
 	const [questions, setQuestions] = useState<Question[]>([]);
 	const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 	const [error, setError] = useState<string | null>(null);
-	const [preview, setPreview] = useState<Question | null>(null);
 	const [pendingDelete, setPendingDelete] = useState<Question | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState(false);
@@ -170,14 +168,14 @@ export function McqDashboard() {
 											>
 												Edit
 											</Link>
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												onClick={() => setPreview(question)}
+											<Link
+												href={`/mcqs/${question.id}/preview`}
+												className={cn(
+													buttonVariants({ variant: "ghost", size: "sm" }),
+												)}
 											>
 												Preview
-											</Button>
+											</Link>
 											<Button
 												type="button"
 												variant="ghost"
@@ -197,37 +195,6 @@ export function McqDashboard() {
 					</Table>
 				) : null}
 			</CardContent>
-
-			<Dialog
-				open={preview !== null}
-				onOpenChange={(open) => {
-					if (!open) {
-						setPreview(null);
-					}
-				}}
-			>
-				<DialogContent className="sm:max-w-lg">
-					<DialogHeader>
-						<DialogTitle>Preview question</DialogTitle>
-						<DialogDescription>
-							Choices are shown in stored order. The correct choice is marked.
-						</DialogDescription>
-					</DialogHeader>
-					{preview ? (
-						<div className="flex flex-col gap-3">
-							<p className="font-medium">{preview.stem}</p>
-							<ol className="flex list-decimal flex-col gap-2 pl-5">
-								{preview.choices.map((choice) => (
-									<li key={choice.id} className="flex items-center gap-2">
-										<span>{choice.label}</span>
-										{choice.isCorrect ? <Badge>Correct</Badge> : null}
-									</li>
-								))}
-							</ol>
-						</div>
-					) : null}
-				</DialogContent>
-			</Dialog>
 
 			<Dialog
 				open={pendingDelete !== null}
